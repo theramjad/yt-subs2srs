@@ -2,6 +2,8 @@
 import os
 import shutil
 import logging
+import hashlib
+import time
 import streamlit as st
 from pathlib import Path
 from modules.audio_processor import extract_audio, extract_audio_clip
@@ -13,6 +15,15 @@ from modules.video_frame_extractor import VideoFrameExtractor
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def generate_hash_filename(prefix: str, extension: str) -> str:
+    """Generate a random hash-based filename to avoid special characters"""
+    # Use timestamp + random component for uniqueness
+    unique_string = f"{time.time()}{os.urandom(16).hex()}"
+    hash_value = hashlib.md5(unique_string.encode()).hexdigest()
+    return f"{prefix}-{hash_value}.{extension}"
+
 
 # Page config
 st.set_page_config(
@@ -130,14 +141,15 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str):
                     sentence_progress = 40 + int(40 * (i / len(valid_sentences)))
                     progress_bar.progress(min(sentence_progress, 80))
 
-                # Extract audio clip
+                # Extract audio clip - use hash-based filenames to avoid special characters in Anki
+                audio_clip_filename = generate_hash_filename("audio", "mp3")
+                screenshot_filename = generate_hash_filename("image", "jpg")
+
+                audio_clip_path = str(work_dir / audio_clip_filename)
+                screenshot_path = str(work_dir / screenshot_filename)
+
                 if combined_mode:
-                    audio_clip_path = str(work_dir / f"clip_{card_counter}.mp3")
-                    screenshot_path = str(work_dir / f"screenshot_{card_counter}.jpg")
                     card_counter += 1
-                else:
-                    audio_clip_path = str(work_dir / f"{video_name}_clip_{i}.mp3")
-                    screenshot_path = str(work_dir / f"{video_name}_screenshot_{i}.jpg")
 
                 extract_audio_clip(
                     audio_path,
