@@ -39,8 +39,9 @@ export class VideoService {
     const proxyArg = proxyConfig.enabled ? `--proxy "${proxyConfig.url}"` : '';
 
     // Build yt-dlp command
-    // Format: best video with height <= 360p
-    const command = `yt-dlp ${proxyArg} --format "best[height<=360]" -o "${videoPath}" "${youtubeUrl}"`;
+    // Format: best video with height <= 360p, with fallbacks for compatibility
+    // Falls back to best available if 360p not available
+    const command = `yt-dlp ${proxyArg} --format "bestvideo[height<=360]+bestaudio/best[height<=360]/best" -o "${videoPath}" "${youtubeUrl}"`;
 
     try {
       this.logger.log('Executing yt-dlp command...');

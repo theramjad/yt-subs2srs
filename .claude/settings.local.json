@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "Bash(npm install:*)",
+      "Bash(yt-dlp:*)"
     ],
     "deny": [],
     "ask": []
