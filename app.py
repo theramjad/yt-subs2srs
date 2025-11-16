@@ -164,15 +164,10 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str):
                 # Extract screenshot at sentence start time
                 frame_extractor.extract_frame(sentence.start_time, screenshot_path)
 
-                # Add filename prefix to sentence only in combined mode with multiple videos
-                sentence_text = sentence.text
-                if combined_mode and len(uploaded_files) > 1:
-                    sentence_text = f"[{video_name}] {sentence.text}"
-
                 card = {
                     'audioFile': audio_clip_path,
                     'imageFile': screenshot_path,
-                    'sentence': sentence_text
+                    'sentence': sentence.text
                 }
 
                 if combined_mode:
