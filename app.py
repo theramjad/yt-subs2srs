@@ -4,6 +4,8 @@ import shutil
 import logging
 import streamlit as st
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from threading import Lock
 from modules.audio_processor import extract_audio, extract_audio_clip
 from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
@@ -51,147 +53,203 @@ if 'completed' not in st.session_state:
     st.session_state.completed = False
 if 'apkg_path' not in st.session_state:
     st.session_state.apkg_path = None
+if 'video_progress' not in st.session_state:
+    st.session_state.video_progress = {}
+
+
+def process_single_video(uploaded_file, work_dir: Path, api_key: str, combined_mode: bool,
+                        card_counter_lock: Lock, card_counter: dict, video_index: int,
+                        total_videos: int, progress_containers: dict):
+    """Process a single video file and return results"""
+    try:
+        video_name = Path(uploaded_file.name).stem
+
+        # Update progress: Saving
+        progress_containers[video_index]['status'].text(f"📁 Saving...")
+        progress_containers[video_index]['progress'].progress(10)
+
+        # Step 1: Save uploaded MP4 file
+        video_path = work_dir / uploaded_file.name
+        with open(video_path, 'wb') as f:
+            f.write(uploaded_file.getvalue())
+
+        # Update progress: Extracting audio
+        progress_containers[video_index]['status'].text(f"🎵 Extracting audio...")
+        progress_containers[video_index]['progress'].progress(20)
+
+        # Step 2: Extract audio
+        audio_path = extract_audio(str(video_path), str(work_dir))
+
+        # Update progress: Transcribing
+        progress_containers[video_index]['status'].text(f"🎤 Transcribing (may take several minutes)...")
+        progress_containers[video_index]['progress'].progress(30)
+
+        # Step 3: Transcribe
+        words = transcribe_audio(audio_path, api_key)
+
+        # Update progress: Segmenting
+        progress_containers[video_index]['status'].text(f"✂️ Segmenting into sentences...")
+        progress_containers[video_index]['progress'].progress(60)
+
+        # Step 4: Segment into sentences
+        sentences = segment_into_sentences(words)
+        valid_sentences = filter_valid_sentences(sentences)
+
+        progress_containers[video_index]['info'].info(f"**{video_name}**: {len(valid_sentences)} sentences")
+
+        # Update progress: Generating cards
+        progress_containers[video_index]['status'].text(f"🎴 Generating {len(valid_sentences)} cards...")
+        progress_containers[video_index]['progress'].progress(70)
+
+        # Step 5: Generate cards with screenshots
+        frame_extractor = VideoFrameExtractor(str(video_path))
+        video_cards = []
+
+        for i, sentence in enumerate(valid_sentences):
+            # Update card generation progress
+            card_progress = 70 + int(25 * (i / max(len(valid_sentences), 1)))
+            progress_containers[video_index]['progress'].progress(min(card_progress, 95))
+
+            # Extract audio clip and screenshot
+            if combined_mode:
+                with card_counter_lock:
+                    counter = card_counter['value']
+                    card_counter['value'] += 1
+                audio_clip_path = str(work_dir / f"clip_{counter}.mp3")
+                screenshot_path = str(work_dir / f"screenshot_{counter}.jpg")
+            else:
+                audio_clip_path = str(work_dir / f"{video_name}_clip_{i}.mp3")
+                screenshot_path = str(work_dir / f"{video_name}_screenshot_{i}.jpg")
+
+            extract_audio_clip(audio_path, sentence.start_time, sentence.end_time, audio_clip_path)
+            frame_extractor.extract_frame(sentence.start_time, screenshot_path)
+
+            # Add filename prefix to sentence only in combined mode with multiple videos
+            sentence_text = sentence.text
+            if combined_mode and total_videos > 1:
+                sentence_text = f"[{video_name}] {sentence.text}"
+
+            card = {
+                'audioFile': audio_clip_path,
+                'imageFile': screenshot_path,
+                'sentence': sentence_text
+            }
+            video_cards.append(card)
+
+        # Delete source audio file to save space
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+
+        # Update progress: Complete
+        progress_containers[video_index]['status'].text(f"✅ Complete!")
+        progress_containers[video_index]['progress'].progress(100)
+
+        return {
+            'video_name': video_name,
+            'cards': video_cards,
+            'card_count': len(video_cards)
+        }
+
+    except Exception as e:
+        progress_containers[video_index]['status'].text(f"❌ Error: {str(e)}")
+        logger.error(f"Processing {uploaded_file.name} failed: {str(e)}")
+        raise
 
 
 def process_videos(uploaded_files, deck_mode: str, api_key: str):
-    """Main processing pipeline for multiple MP4 files"""
+    """Main processing pipeline for multiple MP4 files with parallel processing"""
 
     # Create temp directory
     work_dir = Path("tmp") / "current"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-
         combined_mode = (deck_mode == "Combined Deck")
 
+        # Generate deck name for combined mode
         if combined_mode:
-            # Generate deck name from filenames
             if len(uploaded_files) == 1:
                 deck_name = Path(uploaded_files[0].name).stem
             else:
                 deck_name = f"Combined_{len(uploaded_files)}_videos"
 
-            all_cards = []
-            card_counter = 0
+        # Create progress UI for each video (max 3 columns)
+        st.write(f"### Processing {len(uploaded_files)} video(s) in parallel (max 3 at a time)")
 
-        else:  # Separate Decks mode
-            decks = []  # List of (deck_name, cards, apkg_path) tuples
+        progress_containers = {}
+        num_videos = len(uploaded_files)
 
-        # Process each video file
-        for file_idx, uploaded_file in enumerate(uploaded_files):
-            # Extract filename without extension
-            video_name = Path(uploaded_file.name).stem
+        # Create columns for progress tracking (max 3 per row)
+        for row_start in range(0, num_videos, 3):
+            row_videos = min(3, num_videos - row_start)
+            cols = st.columns(row_videos)
 
-            # Step 1: Save uploaded MP4 file
-            status_text.text(f"📁 Saving {uploaded_file.name}...")
-            video_path = work_dir / uploaded_file.name
-            with open(video_path, 'wb') as f:
-                f.write(uploaded_file.read())
+            for col_idx in range(row_videos):
+                video_idx = row_start + col_idx
+                if video_idx < num_videos:
+                    with cols[col_idx]:
+                        st.markdown(f"**📹 {uploaded_files[video_idx].name}**")
+                        progress_containers[video_idx] = {
+                            'progress': st.progress(0),
+                            'status': st.empty(),
+                            'info': st.empty()
+                        }
 
-            progress = int((file_idx / len(uploaded_files)) * 10)
-            progress_bar.progress(progress)
+        # Shared state for thread-safe card counting
+        card_counter_lock = Lock()
+        card_counter = {'value': 0}
 
-            # Step 2: Extract audio
-            status_text.text(f"🎵 Extracting audio from {uploaded_file.name}...")
-            audio_path = extract_audio(str(video_path), str(work_dir))
+        # Process videos in parallel using ThreadPoolExecutor
+        all_results = []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            # Submit all videos for processing
+            future_to_video = {
+                executor.submit(
+                    process_single_video,
+                    uploaded_file,
+                    work_dir,
+                    api_key,
+                    combined_mode,
+                    card_counter_lock,
+                    card_counter,
+                    idx,
+                    len(uploaded_files),
+                    progress_containers
+                ): (idx, uploaded_file) for idx, uploaded_file in enumerate(uploaded_files)
+            }
 
-            progress = int((file_idx / len(uploaded_files)) * 20) + 10
-            progress_bar.progress(progress)
+            # Collect results as they complete
+            for future in as_completed(future_to_video):
+                idx, uploaded_file = future_to_video[future]
+                try:
+                    result = future.result()
+                    all_results.append(result)
+                except Exception as e:
+                    logger.error(f"Video {uploaded_file.name} failed: {str(e)}")
+                    st.error(f"Failed to process {uploaded_file.name}: {str(e)}")
 
-            # Step 3: Transcribe
-            status_text.text(f"🎤 Transcribing {uploaded_file.name} (this may take several minutes)...")
-            words = transcribe_audio(audio_path, api_key)
+        # Sort results by original order
+        all_results.sort(key=lambda x: next(i for i, f in enumerate(uploaded_files) if Path(f.name).stem == x['video_name']))
 
-            progress = int((file_idx / len(uploaded_files)) * 30) + 20
-            progress_bar.progress(progress)
+        # Create deck(s) based on mode
+        st.write("---")
+        final_status = st.empty()
+        final_progress = st.progress(0)
 
-            # Step 4: Segment into sentences
-            status_text.text(f"✂️ Segmenting {uploaded_file.name} into sentences...")
-            sentences = segment_into_sentences(words)
-            valid_sentences = filter_valid_sentences(sentences)
-
-            st.info(f"📹 **{video_name}**: {len(valid_sentences)} sentences")
-
-            progress = int((file_idx / len(uploaded_files)) * 40) + 30
-            progress_bar.progress(progress)
-
-            # Step 5: Generate cards with screenshots
-            status_text.text(f"🎴 Generating cards for {uploaded_file.name}...")
-
-            # Initialize frame extractor for this video
-            frame_extractor = VideoFrameExtractor(str(video_path))
-
-            video_cards = []
-            for i, sentence in enumerate(valid_sentences):
-                # Update progress (40-80% for card generation)
-                if len(valid_sentences) > 0:
-                    sentence_progress = 40 + int(40 * (i / len(valid_sentences)))
-                    progress_bar.progress(min(sentence_progress, 80))
-
-                # Extract audio clip
-                if combined_mode:
-                    audio_clip_path = str(work_dir / f"clip_{card_counter}.mp3")
-                    screenshot_path = str(work_dir / f"screenshot_{card_counter}.jpg")
-                    card_counter += 1
-                else:
-                    audio_clip_path = str(work_dir / f"{video_name}_clip_{i}.mp3")
-                    screenshot_path = str(work_dir / f"{video_name}_screenshot_{i}.jpg")
-
-                extract_audio_clip(
-                    audio_path,
-                    sentence.start_time,
-                    sentence.end_time,
-                    audio_clip_path
-                )
-
-                # Extract screenshot at sentence start time
-                frame_extractor.extract_frame(sentence.start_time, screenshot_path)
-
-                # Add filename prefix to sentence only in combined mode with multiple videos
-                sentence_text = sentence.text
-                if combined_mode and len(uploaded_files) > 1:
-                    sentence_text = f"[{video_name}] {sentence.text}"
-
-                card = {
-                    'audioFile': audio_clip_path,
-                    'imageFile': screenshot_path,
-                    'sentence': sentence_text
-                }
-
-                if combined_mode:
-                    all_cards.append(card)
-                else:
-                    video_cards.append(card)
-
-            # Delete source audio file to save space
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
-
-            # For separate decks mode, create APKG for this video
-            if not combined_mode:
-                status_text.text(f"📦 Creating deck for {video_name}...")
-                output_path = str(work_dir / f"{video_name}.apkg")
-                create_anki_deck(video_cards, video_name, output_path)
-                decks.append({
-                    'name': video_name,
-                    'cards': video_cards,
-                    'apkg_path': output_path,
-                    'card_count': len(video_cards)
-                })
-
-        # For combined mode, create single APKG
         if combined_mode:
-            status_text.text("📦 Creating combined Anki deck package...")
-            progress_bar.progress(90)
+            # Combine all cards into one deck
+            final_status.text("📦 Creating combined Anki deck package...")
+            final_progress.progress(90)
+
+            all_cards = []
+            for result in all_results:
+                all_cards.extend(result['cards'])
 
             output_path = str(work_dir / f"{deck_name}.apkg")
             create_anki_deck(all_cards, deck_name, output_path)
 
-            # Complete
-            progress_bar.progress(100)
-            status_text.text("✅ Complete!")
+            final_progress.progress(100)
+            final_status.text("✅ Complete!")
 
             return {
                 'mode': 'combined',
@@ -201,9 +259,23 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str):
                 'preview_cards': all_cards
             }
         else:
-            # Complete
-            progress_bar.progress(100)
-            status_text.text("✅ Complete!")
+            # Create separate decks
+            final_status.text("📦 Creating individual Anki deck packages...")
+            decks = []
+
+            for i, result in enumerate(all_results):
+                final_progress.progress(int(90 + (i / len(all_results) * 10)))
+                output_path = str(work_dir / f"{result['video_name']}.apkg")
+                create_anki_deck(result['cards'], result['video_name'], output_path)
+                decks.append({
+                    'name': result['video_name'],
+                    'cards': result['cards'],
+                    'apkg_path': output_path,
+                    'card_count': result['card_count']
+                })
+
+            final_progress.progress(100)
+            final_status.text("✅ Complete!")
 
             total_cards = sum(d['card_count'] for d in decks)
             return {
