@@ -4,11 +4,10 @@ import shutil
 import logging
 import streamlit as st
 from pathlib import Path
-from modules.video_downloader import download_audio_and_video
+from modules.video_downloader import download_audio, get_video_title
 from modules.audio_processor import extract_audio, extract_audio_clip
 from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
-from modules.video_frame_extractor import VideoFrameExtractor
 from modules.anki_deck import create_anki_deck
 
 # Configure logging
@@ -66,14 +65,12 @@ def process_video(youtube_url: str, api_key: str):
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("⬇️ Downloading audio and video...")
+        status_text.text("⬇️ Downloading audio...")
         progress_bar.progress(10)
 
-        # Download audio and video separately
-        audio_file_path, video_path, title = download_audio_and_video(youtube_url, str(work_dir))
-
-        # Initialize frame extractor
-        frame_extractor = VideoFrameExtractor(video_path)
+        # Get video title and download audio only
+        title = get_video_title(youtube_url)
+        audio_file_path = download_audio(youtube_url, str(work_dir))
 
         st.info(f"📹 **{title}**")
 
@@ -114,24 +111,17 @@ def process_video(youtube_url: str, api_key: str):
                 audio_clip_path
             )
 
-            # Extract frame from video
-            screenshot_path = str(work_dir / f"screenshot_{i}.jpg")
-            frame_extractor.extract_frame(
-                sentence.start_time,
-                screenshot_path
-            )
-
             cards.append({
                 'audioFile': audio_clip_path,
-                'imageFile': screenshot_path,
+                'imageFile': None,
                 'sentence': sentence.text
             })
 
-        # Delete video and audio files to save space
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        # Delete source audio file to save space
         if os.path.exists(audio_file_path):
             os.remove(audio_file_path)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
 
         # Step 6: Create APKG
         status_text.text("📦 Creating Anki deck package...")
@@ -197,25 +187,20 @@ else:
     if st.session_state.preview_cards:
         st.subheader("Card Preview")
 
-        # Create table-like display with columns
+        # Audio-only card display
         for i, card in enumerate(st.session_state.preview_cards):
             with st.container():
-                col1, col2, col3 = st.columns([1, 3, 2])
+                col1, col2 = st.columns([3, 2])
 
                 with col1:
-                    st.markdown(f"**#{i+1}**")
-                    st.image(card['imageFile'], use_column_width=True)
-
-                with col2:
-                    # Truncate sentence if too long
                     sentence = card['sentence']
                     display_sentence = sentence if len(sentence) <= 100 else sentence[:100] + "..."
-                    st.markdown(f"**{display_sentence}**")
+                    st.markdown(f"**#{i+1}:** {display_sentence}")
                     if len(sentence) > 100:
                         with st.expander("Show full sentence"):
                             st.write(sentence)
 
-                with col3:
+                with col2:
                     st.audio(card['audioFile'])
 
                 st.divider()
