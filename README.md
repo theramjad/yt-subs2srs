@@ -1,20 +1,24 @@
 # Subs2SRS Anki Card Generator
 
-A Python desktop application that converts YouTube videos into Anki flashcard decks using AssemblyAI transcription with word-level timestamps, creating subs2srs-style cards with thumbnails and audio clips.
+A Python desktop application that converts MP4 videos into Anki flashcard decks using AssemblyAI transcription with word-level timestamps, creating subs2srs-style cards with screenshots and audio clips.
 
 ## Features
 
 - **Simple Desktop App**: Streamlit-based UI runs locally in your browser
-- **YouTube Video Processing**: Downloads audio and thumbnails from YouTube
+- **MP4 Video Upload**: Upload one or multiple MP4 files (up to 500MB each)
+- **Deck Mode Options**:
+  - **Combined Deck**: Merge all videos into a single deck
+  - **Separate Decks**: Create individual decks per video
 - **High-Quality Transcription**: Uses AssemblyAI for Japanese transcription with word-level timestamps
 - **Speaker Diarization**: Automatically splits sentences based on speaker changes
 - **Smart Segmentation**: Intelligently segments transcript into sentences
 - **Media-Rich Cards**: Each card includes:
-  - YouTube video thumbnail
+  - Screenshot extracted at sentence start time
   - Audio clip with 250ms padding
   - Japanese sentence text
 - **Card Preview**: Preview cards before downloading
-- **APKG Export**: Ready-to-import Anki deck package
+- **APKG Export**: Ready-to-import Anki deck package(s)
+- **Dark Theme**: Modern dark UI for comfortable viewing
 
 ## Prerequisites
 
@@ -25,7 +29,19 @@ A Python desktop application that converts YouTube videos into Anki flashcard de
    python3 --version
    ```
 
-2. **yt-dlp** (for YouTube downloads)
+2. **FFmpeg** (for audio and screenshot extraction)
+   ```bash
+   # macOS
+   brew install ffmpeg
+
+   # Linux (Ubuntu/Debian)
+   sudo apt update && sudo apt install ffmpeg
+
+   # Windows
+   # Download from https://ffmpeg.org/download.html
+   ```
+
+3. **yt-dlp** (optional, for downloading YouTube videos)
    ```bash
    # macOS
    brew install yt-dlp
@@ -37,18 +53,6 @@ A Python desktop application that converts YouTube videos into Anki flashcard de
    # Windows
    # Download from https://github.com/yt-dlp/yt-dlp/releases
    # Or: pip install yt-dlp
-   ```
-
-3. **FFmpeg** (for media processing)
-   ```bash
-   # macOS
-   brew install ffmpeg
-
-   # Linux (Ubuntu/Debian)
-   sudo apt update && sudo apt install ffmpeg
-
-   # Windows
-   # Download from https://ffmpeg.org/download.html
    ```
 
 ### API Keys
@@ -90,26 +94,53 @@ The app will automatically open in your default web browser at `http://localhost
 
 ## Usage
 
+### Step 1: Download YouTube Videos (Optional)
+
+If you want to process YouTube videos, first download them as MP4 files using yt-dlp:
+
+```bash
+# Download at 360p resolution (recommended for file size)
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" https://www.youtube.com/watch?v=n-HOrDjd7e8
+
+# Or download best quality (larger file size)
+yt-dlp https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+
+# Download playlist
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" "PLAYLIST_URL"
+```
+
+**Example** (Japanese anime episode):
+```bash
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" \
+  https://www.youtube.com/watch?v=n-HOrDjd7e8&list=PLap_QVkdutQ-BvaNtKKyiU5w5BB8pKJD4&index=7
+```
+
+### Step 2: Generate Anki Cards
+
 1. **Launch the App**: Run `streamlit run app.py`
 
-2. **Enter YouTube URL**: Paste the URL of the Japanese YouTube video you want to convert
+2. **Upload MP4 Files**: Click "Browse files" and select one or more MP4 videos (up to 500MB each)
 
-3. **Enter AssemblyAI API Key**: Your API key (get one free at assemblyai.com)
+3. **Choose Deck Mode**:
+   - **Combined Deck**: Merge all videos into one deck (sentences prefixed with filename)
+   - **Separate Decks**: Create individual deck per video
 
-4. **Generate Deck**: Click the "Generate Deck" button and wait for processing
+4. **Enter AssemblyAI API Key**: Your API key (get one free at assemblyai.com)
+
+5. **Generate Deck**: Click "Generate Deck" and wait for processing
    - Processing steps:
-     - Downloading audio and thumbnail
+     - Saving uploaded file(s)
      - Extracting audio
      - Transcribing (this takes the longest, several minutes)
      - Segmenting into sentences
-     - Generating cards
-     - Creating deck
+     - Generating cards with screenshots and audio
+     - Creating deck(s)
 
-5. **Preview Cards**: Once complete, preview cards with thumbnails and audio
+6. **Preview Cards**: Once complete, preview cards with screenshots and audio
 
-6. **Download APKG**: Click "Download APKG" to get your Anki deck
+7. **Download APKG**: Click "Download APKG" to get your Anki deck(s)
 
-7. **Import to Anki**: Open Anki and import the downloaded `.apkg` file
+8. **Import to Anki**: Open Anki and import the downloaded `.apkg` file(s)
 
 ## Card Format
 
@@ -117,26 +148,27 @@ Each Anki card contains:
 
 - **Front**:
   - Audio clip (plays automatically)
-  - YouTube video thumbnail
+  - Screenshot from video at sentence start time
 - **Back**:
   - Same content as front
   - Japanese sentence text
+  - (Optionally prefixed with [filename] in combined deck mode)
 
 ## Project Structure
 
 ```
 yt-subs2srs/
 ├── app.py                      # Main Streamlit application
+├── .streamlit/
+│   └── config.toml             # Streamlit config (500MB upload, dark theme)
 ├── modules/
-│   ├── video_downloader.py     # yt-dlp video downloads
 │   ├── audio_processor.py      # FFmpeg audio extraction
 │   ├── transcriber.py          # AssemblyAI transcription
 │   ├── segmenter.py            # Sentence segmentation
-│   ├── screenshot.py           # Screenshot extraction
+│   ├── video_frame_extractor.py # FFmpeg screenshot extraction
 │   └── anki_deck.py            # genanki deck generation
 ├── tmp/                        # Temporary working directory
 ├── requirements.txt            # Python dependencies
-├── plan.md                     # Original implementation plan
 └── README.md
 ```
 
@@ -156,38 +188,50 @@ The application uses the following rules to segment sentences:
 ### Media Settings
 
 - **Audio Format**: MP3, 128kbps, 44.1kHz, stereo
-- **Image**: YouTube thumbnail (JPG format)
+- **Screenshot Format**: JPEG, high quality (q:v 2, ~85%)
+- **Screenshot Timing**: Extracted at sentence start_time
 - **Audio Padding**: 250ms before and after each sentence
+- **Upload Limit**: 500MB per file
 
 ## Troubleshooting
 
-### "yt-dlp not found"
-Make sure yt-dlp is installed and in your PATH:
-```bash
-yt-dlp --version
-```
-
 ### "FFmpeg not found"
-Install FFmpeg:
+Install FFmpeg and verify it's in your PATH:
 ```bash
 ffmpeg -version
 ```
 
-### "YouTube download failed"
-- Check if the video is available in your region
-- Verify the YouTube URL is correct
-- Make sure yt-dlp is up to date: `pip install --upgrade yt-dlp`
+### "File too large" error
+The upload limit is 500MB per file. Compress your video:
+```bash
+# Using yt-dlp to download at lower resolution
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" VIDEO_URL
+
+# Or compress existing file with FFmpeg
+ffmpeg -i input.mp4 -vf scale=640:360 -c:v libx264 -crf 28 -c:a aac -b:a 96k output.mp4
+```
 
 ### "Transcription failed"
 - Verify your AssemblyAI API key is correct
 - Check if you have sufficient API credits
 - Ensure the video has clear Japanese audio
+- Try with a shorter video first
+
+### "Screenshot extraction failed"
+- Ensure FFmpeg is properly installed
+- Check that the video file is not corrupted
+- Verify the video has actual video frames (not audio-only)
 
 ### Port already in use
 If port 8501 is already in use:
 ```bash
 streamlit run app.py --server.port 8502
 ```
+
+### yt-dlp download issues
+- Make sure yt-dlp is up to date: `pip install --upgrade yt-dlp`
+- Check if the video is available in your region
+- Some videos may require authentication or may be blocked
 
 ## Packaging as Standalone Executable
 
@@ -203,10 +247,10 @@ Note: You'll need to include the modules folder and ensure FFmpeg and yt-dlp are
 ## Tech Stack
 
 - **Streamlit** - Web UI framework
-- **yt-dlp** - YouTube video downloads
-- **FFmpeg** - Media processing
+- **FFmpeg** - Audio extraction, screenshot extraction, and media processing
 - **AssemblyAI** - Japanese transcription with word-level timestamps
 - **genanki** - Anki deck generation
+- **yt-dlp** (optional) - For downloading YouTube videos before processing
 
 ## License
 
