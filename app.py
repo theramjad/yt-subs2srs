@@ -77,14 +77,9 @@ def process_video(youtube_url: str, api_key: str):
         progress_bar.progress(20)
         audio_path = extract_audio(video_path, str(work_dir))
 
-        # Re-download video for screenshots (was deleted after audio extraction)
-        status_text.text("⬇️ Re-downloading video for screenshots...")
-        progress_bar.progress(25)
-        video_path, _ = download_video(youtube_url, str(work_dir))
-
         # Step 3: Transcribe
         status_text.text("🎤 Transcribing audio (this may take several minutes)...")
-        progress_bar.progress(30)
+        progress_bar.progress(25)
         words = transcribe_audio(audio_path, api_key)
 
         # Step 4: Segment into sentences

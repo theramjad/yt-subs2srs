@@ -42,10 +42,6 @@ def extract_audio(video_path: str, output_dir: str) -> str:
 
         logger.info("Audio extracted successfully")
 
-        # Delete video to save space
-        os.remove(video_path)
-        logger.info("Video file deleted")
-
         return audio_path
 
     except subprocess.CalledProcessError as e:

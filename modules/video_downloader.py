@@ -26,9 +26,10 @@ def download_video(youtube_url: str, output_dir: str) -> tuple[str, str]:
     video_path = os.path.join(output_dir, "video.mp4")
 
     # Download video with yt-dlp
+    # Format: 360p combined or separate video+audio, with fallbacks
     cmd = [
         "yt-dlp",
-        "--format", "bestvideo[height<=360]+bestaudio/best[height<=360]/best",
+        "--format", "18/bv*[height<=360]+ba/b[height<=360]/bv*+ba/b",
         "--merge-output-format", "mp4",
         "--output", video_path,
         youtube_url
