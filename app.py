@@ -52,7 +52,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Header
-st.markdown('<h1 class="main-header">🎴 Subs2SRS Anki Card Generator</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="main-header">Video to Subs2srs Decks</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Convert MP4 videos to Anki flashcard decks</p>', unsafe_allow_html=True)
 
 # Initialize session state
@@ -378,4 +378,4 @@ else:
 
 # Footer
 st.divider()
-st.caption("Made with ❤️ using Streamlit • Powered by AssemblyAI, FFmpeg, and genanki")
+st.caption("Look at the [sourcecode on GitHub](https://github.com/theramjad/yt-subs2srs)")

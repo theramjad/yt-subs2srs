@@ -1,11 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "WebSearch",
-      "Bash(npm install:*)",
-      "Bash(yt-dlp:*)",
       "Bash(source:*)",
-      "Bash(python -c \"import sys; sys.argv = [''app.py'']; exec(open(''app.py'').read().split(''# Main UI'')[0] + ''print(\"\"✓ app.py syntax check passed\"\")'')\")"
+      "Bash(streamlit run:*)"
     ],
     "deny": [],
     "ask": []
