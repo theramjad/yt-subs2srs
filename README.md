@@ -5,7 +5,7 @@ A Python desktop application that converts MP4 videos into Anki flashcard decks 
 ## Features
 
 - **Simple Desktop App**: Streamlit-based UI runs locally in your browser
-- **MP4 Video Upload**: Upload one or multiple MP4 files (up to 500MB each)
+- **MP4 Video Upload**: Upload one or multiple MP4 files (up to 1GB each)
 - **Deck Mode Options**:
   - **Combined Deck**: Merge all videos into a single deck
   - **Separate Decks**: Create individual decks per video
@@ -118,7 +118,7 @@ yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-fo
 
 1. **Launch the App**: Run `streamlit run app.py`
 
-2. **Upload MP4 Files**: Click "Browse files" and select one or more MP4 videos (up to 500MB each)
+2. **Upload MP4 Files**: Click "Browse files" and select one or more MP4 videos (up to 1GB each)
 
 3. **Choose Deck Mode**:
    - **Combined Deck**: Merge all videos into one deck (sentences prefixed with filename)
@@ -159,7 +159,7 @@ Each Anki card contains:
 yt-subs2srs/
 ├── app.py                      # Main Streamlit application
 ├── .streamlit/
-│   └── config.toml             # Streamlit config (500MB upload, dark theme)
+│   └── config.toml             # Streamlit config (1GB upload, dark theme)
 ├── modules/
 │   ├── audio_processor.py      # FFmpeg audio extraction
 │   ├── transcriber.py          # AssemblyAI transcription
@@ -190,7 +190,7 @@ The application uses the following rules to segment sentences:
 - **Screenshot Format**: JPEG, high quality (q:v 2, ~85%)
 - **Screenshot Timing**: Extracted at sentence start_time
 - **Audio Padding**: 250ms before and after each sentence
-- **Upload Limit**: 500MB per file
+- **Upload Limit**: 1GB per file
 
 ## Troubleshooting
 
@@ -201,7 +201,7 @@ ffmpeg -version
 ```
 
 ### "File too large" error
-The upload limit is 500MB per file. Compress your video:
+The upload limit is 1GB per file. Compress your video if needed:
 ```bash
 # Using yt-dlp to download at lower resolution
 yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-format mp4 "VIDEO_URL"
