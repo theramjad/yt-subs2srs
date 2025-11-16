@@ -4,11 +4,11 @@ import shutil
 import logging
 import streamlit as st
 from pathlib import Path
-from modules.video_downloader import download_audio, get_video_title, download_thumbnail
 from modules.audio_processor import extract_audio, extract_audio_clip
 from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
 from modules.anki_deck import create_anki_deck
+from modules.video_frame_extractor import VideoFrameExtractor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -42,7 +42,7 @@ st.markdown("""
 
 # Header
 st.markdown('<h1 class="main-header">🎴 Subs2SRS Anki Card Generator</h1>', unsafe_allow_html=True)
-st.markdown('<p class="subtitle">Convert YouTube videos to Anki flashcard decks</p>', unsafe_allow_html=True)
+st.markdown('<p class="subtitle">Convert MP4 videos to Anki flashcard decks</p>', unsafe_allow_html=True)
 
 # Initialize session state
 if 'processing' not in st.session_state:
@@ -53,89 +53,112 @@ if 'apkg_path' not in st.session_state:
     st.session_state.apkg_path = None
 
 
-def process_video(youtube_url: str, api_key: str):
-    """Main processing pipeline"""
+def process_videos(uploaded_files, deck_name: str, api_key: str):
+    """Main processing pipeline for multiple MP4 files"""
 
     # Create temp directory
     work_dir = Path("tmp") / "current"
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Step 1: Download audio and thumbnail
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("⬇️ Downloading audio and thumbnail...")
-        progress_bar.progress(10)
+        all_cards = []
+        card_counter = 0
 
-        # Get video title and download audio + thumbnail
-        title = get_video_title(youtube_url)
-        audio_file_path = download_audio(youtube_url, str(work_dir))
-        thumbnail_path = download_thumbnail(youtube_url, str(work_dir))
+        # Process each video file
+        for file_idx, uploaded_file in enumerate(uploaded_files):
+            # Extract filename without extension for prefix
+            video_name = Path(uploaded_file.name).stem
 
-        st.info(f"📹 **{title}**")
+            # Step 1: Save uploaded MP4 file
+            status_text.text(f"📁 Saving {uploaded_file.name}...")
+            video_path = work_dir / uploaded_file.name
+            with open(video_path, 'wb') as f:
+                f.write(uploaded_file.read())
 
-        # Step 2: Extract audio
-        status_text.text("🎵 Extracting audio...")
-        progress_bar.progress(20)
-        audio_path = extract_audio(audio_file_path, str(work_dir))
+            progress = int((file_idx / len(uploaded_files)) * 10)
+            progress_bar.progress(progress)
 
-        # Step 3: Transcribe
-        status_text.text("🎤 Transcribing audio (this may take several minutes)...")
-        progress_bar.progress(25)
-        words = transcribe_audio(audio_path, api_key)
+            # Step 2: Extract audio
+            status_text.text(f"🎵 Extracting audio from {uploaded_file.name}...")
+            audio_path = extract_audio(str(video_path), str(work_dir))
 
-        # Step 4: Segment into sentences
-        status_text.text("✂️ Segmenting into sentences...")
-        progress_bar.progress(60)
-        sentences = segment_into_sentences(words)
-        valid_sentences = filter_valid_sentences(sentences)
+            progress = int((file_idx / len(uploaded_files)) * 20) + 10
+            progress_bar.progress(progress)
 
-        st.success(f"Created {len(valid_sentences)} sentences")
+            # Step 3: Transcribe
+            status_text.text(f"🎤 Transcribing {uploaded_file.name} (this may take several minutes)...")
+            words = transcribe_audio(audio_path, api_key)
 
-        # Step 5: Generate cards
-        status_text.text(f"🎴 Generating {len(valid_sentences)} cards...")
-        progress_bar.progress(70)
+            progress = int((file_idx / len(uploaded_files)) * 30) + 20
+            progress_bar.progress(progress)
 
-        cards = []
-        for i, sentence in enumerate(valid_sentences):
-            # Update progress
-            card_progress = 70 + int(20 * (i / len(valid_sentences)))
-            progress_bar.progress(card_progress)
+            # Step 4: Segment into sentences
+            status_text.text(f"✂️ Segmenting {uploaded_file.name} into sentences...")
+            sentences = segment_into_sentences(words)
+            valid_sentences = filter_valid_sentences(sentences)
 
-            # Extract audio clip
-            audio_clip_path = str(work_dir / f"clip_{i}.mp3")
-            extract_audio_clip(
-                audio_path,
-                sentence.start_time,
-                sentence.end_time,
-                audio_clip_path
-            )
+            st.info(f"📹 **{video_name}**: {len(valid_sentences)} sentences")
 
-            cards.append({
-                'audioFile': audio_clip_path,
-                'imageFile': thumbnail_path,
-                'sentence': sentence.text
-            })
+            progress = int((file_idx / len(uploaded_files)) * 40) + 30
+            progress_bar.progress(progress)
 
-        # Delete source audio file to save space
-        if os.path.exists(audio_file_path):
-            os.remove(audio_file_path)
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+            # Step 5: Generate cards with screenshots
+            status_text.text(f"🎴 Generating cards for {uploaded_file.name}...")
+
+            # Initialize frame extractor for this video
+            frame_extractor = VideoFrameExtractor(str(video_path))
+
+            for i, sentence in enumerate(valid_sentences):
+                # Update progress (40-80% for card generation)
+                if len(valid_sentences) > 0:
+                    sentence_progress = 40 + int(40 * (i / len(valid_sentences)))
+                    progress_bar.progress(min(sentence_progress, 80))
+
+                # Extract audio clip
+                audio_clip_path = str(work_dir / f"clip_{card_counter}.mp3")
+                extract_audio_clip(
+                    audio_path,
+                    sentence.start_time,
+                    sentence.end_time,
+                    audio_clip_path
+                )
+
+                # Extract screenshot at sentence start time
+                screenshot_path = str(work_dir / f"screenshot_{card_counter}.jpg")
+                frame_extractor.extract_frame(sentence.start_time, screenshot_path)
+
+                # Add filename prefix to sentence if multiple videos
+                sentence_text = sentence.text
+                if len(uploaded_files) > 1:
+                    sentence_text = f"[{video_name}] {sentence.text}"
+
+                all_cards.append({
+                    'audioFile': audio_clip_path,
+                    'imageFile': screenshot_path,
+                    'sentence': sentence_text
+                })
+
+                card_counter += 1
+
+            # Delete source audio file to save space
+            if os.path.exists(audio_path):
+                os.remove(audio_path)
 
         # Step 6: Create APKG
         status_text.text("📦 Creating Anki deck package...")
         progress_bar.progress(90)
 
-        output_path = str(work_dir / f"{title}.apkg")
-        create_anki_deck(cards, title, output_path)
+        output_path = str(work_dir / f"{deck_name}.apkg")
+        create_anki_deck(all_cards, deck_name, output_path)
 
         # Complete
         progress_bar.progress(100)
         status_text.text("✅ Complete!")
 
-        return output_path, len(cards), cards  # Return path, count, and all cards for preview
+        return output_path, len(all_cards), all_cards  # Return path, count, and all cards for preview
 
     except Exception as e:
         logger.error(f"Processing failed: {str(e)}")
@@ -146,10 +169,17 @@ def process_video(youtube_url: str, api_key: str):
 if not st.session_state.completed:
     # Input form
     with st.form("input_form"):
-        youtube_url = st.text_input(
-            "YouTube URL",
-            placeholder="https://www.youtube.com/watch?v=...",
-            help="Enter the URL of a Japanese YouTube video"
+        uploaded_files = st.file_uploader(
+            "Upload MP4 Video Files",
+            type=['mp4'],
+            accept_multiple_files=True,
+            help="Upload one or more Japanese MP4 video files"
+        )
+
+        deck_name = st.text_input(
+            "Deck Name",
+            placeholder="My Japanese Deck",
+            help="Name for your Anki deck"
         )
 
         api_key = st.text_input(
@@ -161,14 +191,16 @@ if not st.session_state.completed:
         submit = st.form_submit_button("🚀 Generate Deck", use_container_width=True)
 
     if submit:
-        if not youtube_url or not api_key:
-            st.error("Please provide both YouTube URL and API key")
+        if not uploaded_files or not api_key:
+            st.error("Please provide both MP4 file(s) and API key")
+        elif not deck_name:
+            st.error("Please provide a deck name")
         else:
             st.session_state.processing = True
 
             try:
                 with st.spinner("Processing..."):
-                    apkg_path, card_count, preview_cards = process_video(youtube_url, api_key)
+                    apkg_path, card_count, preview_cards = process_videos(uploaded_files, deck_name, api_key)
 
                     st.session_state.apkg_path = apkg_path
                     st.session_state.card_count = card_count
@@ -236,4 +268,4 @@ else:
 
 # Footer
 st.divider()
-st.caption("Made with ❤️ using Streamlit • Powered by AssemblyAI, yt-dlp, and genanki")
+st.caption("Made with ❤️ using Streamlit • Powered by AssemblyAI, FFmpeg, and genanki")

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Subs2SRS Anki Card Generator - A Streamlit web app that converts YouTube videos into Anki flashcard decks with audio clips and Japanese sentence text. Currently **audio-only** (screenshots/video temporarily disabled).
+Subs2SRS Anki Card Generator - A Streamlit web app that converts MP4 videos into Anki flashcard decks with audio clips, screenshots, and Japanese sentence text. Supports multiple video uploads that are combined into a single deck.
 
 ## Running the Application
 
@@ -26,12 +26,10 @@ source venv/bin/activate && streamlit run app.py
 ## System Dependencies
 
 Required external tools (must be installed on system, not in venv):
-- **yt-dlp**: YouTube video/audio downloads
-- **ffmpeg**: Audio extraction and clipping
+- **ffmpeg**: Audio extraction, clipping, and frame extraction
 
 Verify installation:
 ```bash
-yt-dlp --version
 ffmpeg -version
 ```
 
@@ -40,29 +38,29 @@ ffmpeg -version
 ### Pipeline Flow
 
 ```
-YouTube URL → Audio Download → Transcription → Segmentation → Card Generation → APKG Export
+MP4 Upload(s) → Audio Extraction → Transcription → Segmentation → Card Generation (Audio + Screenshots) → APKG Export
 ```
 
-**Entry point**: `app.py` orchestrates the pipeline via `process_video()` function
+**Entry point**: `app.py` orchestrates the pipeline via `process_videos()` function
 
 ### Module Responsibilities
 
 **`app.py`** (Streamlit UI orchestration):
 - Session state management: `processing`, `completed`, `apkg_path`, `preview_cards`
 - Progress tracking with visual feedback
-- `process_video()` orchestrates the entire pipeline at app.py:56
-
-**`modules/video_downloader.py`** (yt-dlp wrapper):
-- `get_video_title(url)` → title string for deck naming
-- `download_audio(url, output_dir)` → audio file path (m4a format)
-- `download_thumbnail(url, output_dir)` → thumbnail image path (jpg/webp/png)
-- Format selector for audio: `"ba[ext=m4a]/ba"` (best audio)
-- `download_video()` exists but is not currently used (full video download disabled)
+- File upload handling via Streamlit `file_uploader` (supports multiple MP4 files)
+- `process_videos()` orchestrates the entire pipeline for multiple videos at app.py:56
 
 **`modules/audio_processor.py`** (FFmpeg wrapper):
-- `extract_audio(m4a_path, output_dir)` → WAV/MP3 file for transcription
+- `extract_audio(video_path, output_dir)` → MP3 file for transcription
 - `extract_audio_clip(audio, start, end, output, padding=0.25)` → sentence MP3 clips
 - Clips use 250ms padding before/after for natural listening
+
+**`modules/video_frame_extractor.py`** (FFmpeg wrapper):
+- `VideoFrameExtractor(video_path)` → frame extractor instance
+- `extract_frame(timestamp, output_path)` → extracts JPEG frame at specific time
+- `extract_frames_batch(timestamps, output_dir)` → batch frame extraction
+- Quality: `-q:v 2` (high quality JPEG, ~85% quality)
 
 **`modules/transcriber.py`** (AssemblyAI REST API):
 - `transcribe_audio(audio_path, api_key)` → List[TranscriptWordData]
@@ -83,7 +81,7 @@ YouTube URL → Audio Download → Transcription → Segmentation → Card Gener
 **`modules/anki_deck.py`** (genanki wrapper):
 - `create_anki_deck(cards, deck_name, output_path)` → APKG file path
 - Card format: `{audioFile: str, imageFile: str, sentence: str}`
-- `imageFile` contains the YouTube thumbnail path (same for all cards in deck)
+- `imageFile` contains path to screenshot extracted at sentence start time (unique per card)
 - Model: "Subs2SRS Japanese" with front (audio+image) and back (+ sentence text)
 
 ### Key Data Structures
@@ -107,8 +105,8 @@ class Sentence:
 # 3. Card format (passed to anki_deck.py:46)
 card = {
     'audioFile': str,      # Path to sentence MP3 clip
-    'imageFile': str,      # Path to YouTube thumbnail (shared across all cards)
-    'sentence': str        # Japanese text
+    'imageFile': str,      # Path to screenshot at sentence start_time (unique per card)
+    'sentence': str        # Japanese text (prefixed with [filename] if multiple videos)
 }
 ```
 
@@ -123,18 +121,21 @@ AssemblyAI returns timestamps in **milliseconds**, which are converted to **seco
 - Audio/video source files deleted after clip extraction (app.py:121-124)
 - **Do not commit** `tmp/` directory
 
-## Current State: Thumbnail Mode
+## Current State: MP4 Upload with Screenshots
 
 Cards now contain:
 - ✅ Audio clips (sentence-level with 250ms padding)
-- ✅ Japanese text
-- ✅ YouTube thumbnail (same thumbnail used for all cards in a deck)
+- ✅ Japanese text (prefixed with filename if multiple videos)
+- ✅ Screenshots extracted at sentence start time (unique per card)
 
-**Note**: Using YouTube thumbnails instead of per-sentence screenshots simplifies implementation and avoids yt-dlp format selection issues. All cards from the same video share the same thumbnail image.
+**Implementation Details**:
+- Uses `VideoFrameExtractor` to extract frames at `sentence.start_time`
+- Each card gets a unique screenshot showing what's happening when the sentence begins
+- Screenshot quality: JPEG with `-q:v 2` (~85% quality)
+- Multiple MP4 files are combined into a single deck with filename prefixes
 
-Video frame extraction modules exist but are not used:
-- `modules/video_frame_extractor.py` (not used)
-- `modules/screenshot.py` (not used)
+**Unused modules**:
+- `modules/screenshot.py` (deprecated)
 
 ## Development Workflow
 
@@ -153,10 +154,10 @@ frames, simplifying video handling and avoiding format issues."
 
 ## Important Technical Details
 
-### yt-dlp Commands
-- **Audio download**: `yt-dlp --format "ba[ext=m4a]/ba" --output <path> <url>`
-- **Thumbnail download**: `yt-dlp --write-thumbnail --skip-download --convert-thumbnails jpg --output <path> <url>`
-- **Get title**: `yt-dlp --get-title <url>`
+### FFmpeg Commands
+- **Audio extraction**: `ffmpeg -i video.mp4 -vn -acodec libmp3lame -ar 44100 -ac 2 -b:a 128k audio.mp3`
+- **Audio clipping**: `ffmpeg -ss {start} -i audio.mp3 -t {duration} -c copy clip.mp3`
+- **Frame extraction**: `ffmpeg -ss {timestamp} -i video.mp4 -frames:v 1 -q:v 2 frame.jpg`
 
 ### AssemblyAI Configuration
 - Language: `"ja"` (Japanese)
