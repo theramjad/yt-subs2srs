@@ -1,9 +1,10 @@
-"""Subs2SRS Anki Card Generator - Streamlit App"""
+"""Video to Sub2SRS Decks - Streamlit App"""
 import os
 import shutil
 import logging
 import hashlib
 import time
+import zipfile
 import streamlit as st
 from pathlib import Path
 from modules.audio_processor import extract_audio, extract_audio_clip
@@ -27,7 +28,7 @@ def generate_hash_filename(prefix: str, extension: str) -> str:
 
 # Page config
 st.set_page_config(
-    page_title="Subs2SRS Anki Card Generator",
+    page_title="Video to Sub2SRS Decks",
     page_icon="🎴",
     layout="centered"
 )
@@ -354,16 +355,37 @@ else:
                 if deck['card_count'] > 3:
                     st.caption(f"Showing 3 of {deck['card_count']} cards")
 
-                # Download button for this deck
-                with open(deck['apkg_path'], 'rb') as f:
-                    st.download_button(
-                        label=f"📥 Download {deck['name']}.apkg",
-                        data=f,
-                        file_name=os.path.basename(deck['apkg_path']),
-                        mime="application/apkg",
-                        use_container_width=True,
-                        key=f"download_{deck['name']}"
-                    )
+            # Download button for this deck (outside expander)
+            with open(deck['apkg_path'], 'rb') as f:
+                st.download_button(
+                    label=f"📥 Download {deck['name']}.apkg",
+                    data=f,
+                    file_name=os.path.basename(deck['apkg_path']),
+                    mime="application/apkg",
+                    use_container_width=True,
+                    key=f"download_{deck['name']}"
+                )
+            st.write("")  # Add spacing
+
+        # Download all button
+        st.divider()
+
+        # Create zip file with all decks
+        work_dir = Path("tmp") / st.session_state.session_id
+        zip_path = work_dir / "all_decks.zip"
+
+        with zipfile.ZipFile(zip_path, 'w') as zipf:
+            for deck in result['decks']:
+                zipf.write(deck['apkg_path'], os.path.basename(deck['apkg_path']))
+
+        with open(zip_path, 'rb') as f:
+            st.download_button(
+                label="📥 Download All Decks (ZIP)",
+                data=f,
+                file_name="all_decks.zip",
+                mime="application/zip",
+                use_container_width=True
+            )
 
         # Create another deck button
         st.divider()
