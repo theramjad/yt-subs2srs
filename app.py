@@ -367,7 +367,7 @@ else:
                 )
             st.write("")  # Add spacing
 
-        # Download all button
+        # Download all button and create another deck button
         st.divider()
 
         # Create zip file with all decks
@@ -378,25 +378,27 @@ else:
             for deck in result['decks']:
                 zipf.write(deck['apkg_path'], os.path.basename(deck['apkg_path']))
 
-        with open(zip_path, 'rb') as f:
-            st.download_button(
-                label="📥 Download All Decks (ZIP)",
-                data=f,
-                file_name="all_decks.zip",
-                mime="application/zip",
-                use_container_width=True
-            )
+        col1, col2 = st.columns(2)
 
-        # Create another deck button
-        st.divider()
-        if st.button("🔄 Create Another Deck", use_container_width=True):
-            # Clean up session-specific directory
-            session_dir = Path("tmp") / st.session_state.session_id
-            shutil.rmtree(session_dir, ignore_errors=True)
-            st.session_state.processing = False
-            st.session_state.completed = False
-            st.session_state.result = None
-            st.rerun()
+        with col1:
+            with open(zip_path, 'rb') as f:
+                st.download_button(
+                    label="📥 Download all zip",
+                    data=f,
+                    file_name="all_decks.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
+
+        with col2:
+            if st.button("🔄 Create Another Deck", use_container_width=True):
+                # Clean up session-specific directory
+                session_dir = Path("tmp") / st.session_state.session_id
+                shutil.rmtree(session_dir, ignore_errors=True)
+                st.session_state.processing = False
+                st.session_state.completed = False
+                st.session_state.result = None
+                st.rerun()
 
 # Footer
 st.divider()
