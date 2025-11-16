@@ -53,7 +53,7 @@ if 'apkg_path' not in st.session_state:
     st.session_state.apkg_path = None
 
 
-def process_videos(uploaded_files, deck_name: str, api_key: str):
+def process_videos(uploaded_files, deck_mode: str, api_key: str):
     """Main processing pipeline for multiple MP4 files"""
 
     # Create temp directory
@@ -64,12 +64,24 @@ def process_videos(uploaded_files, deck_name: str, api_key: str):
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        all_cards = []
-        card_counter = 0
+        combined_mode = (deck_mode == "Combined Deck")
+
+        if combined_mode:
+            # Generate deck name from filenames
+            if len(uploaded_files) == 1:
+                deck_name = Path(uploaded_files[0].name).stem
+            else:
+                deck_name = f"Combined_{len(uploaded_files)}_videos"
+
+            all_cards = []
+            card_counter = 0
+
+        else:  # Separate Decks mode
+            decks = []  # List of (deck_name, cards, apkg_path) tuples
 
         # Process each video file
         for file_idx, uploaded_file in enumerate(uploaded_files):
-            # Extract filename without extension for prefix
+            # Extract filename without extension
             video_name = Path(uploaded_file.name).stem
 
             # Step 1: Save uploaded MP4 file
@@ -111,6 +123,7 @@ def process_videos(uploaded_files, deck_name: str, api_key: str):
             # Initialize frame extractor for this video
             frame_extractor = VideoFrameExtractor(str(video_path))
 
+            video_cards = []
             for i, sentence in enumerate(valid_sentences):
                 # Update progress (40-80% for card generation)
                 if len(valid_sentences) > 0:
@@ -118,7 +131,14 @@ def process_videos(uploaded_files, deck_name: str, api_key: str):
                     progress_bar.progress(min(sentence_progress, 80))
 
                 # Extract audio clip
-                audio_clip_path = str(work_dir / f"clip_{card_counter}.mp3")
+                if combined_mode:
+                    audio_clip_path = str(work_dir / f"clip_{card_counter}.mp3")
+                    screenshot_path = str(work_dir / f"screenshot_{card_counter}.jpg")
+                    card_counter += 1
+                else:
+                    audio_clip_path = str(work_dir / f"{video_name}_clip_{i}.mp3")
+                    screenshot_path = str(work_dir / f"{video_name}_screenshot_{i}.jpg")
+
                 extract_audio_clip(
                     audio_path,
                     sentence.start_time,
@@ -127,38 +147,70 @@ def process_videos(uploaded_files, deck_name: str, api_key: str):
                 )
 
                 # Extract screenshot at sentence start time
-                screenshot_path = str(work_dir / f"screenshot_{card_counter}.jpg")
                 frame_extractor.extract_frame(sentence.start_time, screenshot_path)
 
-                # Add filename prefix to sentence if multiple videos
+                # Add filename prefix to sentence only in combined mode with multiple videos
                 sentence_text = sentence.text
-                if len(uploaded_files) > 1:
+                if combined_mode and len(uploaded_files) > 1:
                     sentence_text = f"[{video_name}] {sentence.text}"
 
-                all_cards.append({
+                card = {
                     'audioFile': audio_clip_path,
                     'imageFile': screenshot_path,
                     'sentence': sentence_text
-                })
+                }
 
-                card_counter += 1
+                if combined_mode:
+                    all_cards.append(card)
+                else:
+                    video_cards.append(card)
 
             # Delete source audio file to save space
             if os.path.exists(audio_path):
                 os.remove(audio_path)
 
-        # Step 6: Create APKG
-        status_text.text("📦 Creating Anki deck package...")
-        progress_bar.progress(90)
+            # For separate decks mode, create APKG for this video
+            if not combined_mode:
+                status_text.text(f"📦 Creating deck for {video_name}...")
+                output_path = str(work_dir / f"{video_name}.apkg")
+                create_anki_deck(video_cards, video_name, output_path)
+                decks.append({
+                    'name': video_name,
+                    'cards': video_cards,
+                    'apkg_path': output_path,
+                    'card_count': len(video_cards)
+                })
 
-        output_path = str(work_dir / f"{deck_name}.apkg")
-        create_anki_deck(all_cards, deck_name, output_path)
+        # For combined mode, create single APKG
+        if combined_mode:
+            status_text.text("📦 Creating combined Anki deck package...")
+            progress_bar.progress(90)
 
-        # Complete
-        progress_bar.progress(100)
-        status_text.text("✅ Complete!")
+            output_path = str(work_dir / f"{deck_name}.apkg")
+            create_anki_deck(all_cards, deck_name, output_path)
 
-        return output_path, len(all_cards), all_cards  # Return path, count, and all cards for preview
+            # Complete
+            progress_bar.progress(100)
+            status_text.text("✅ Complete!")
+
+            return {
+                'mode': 'combined',
+                'deck_name': deck_name,
+                'apkg_path': output_path,
+                'card_count': len(all_cards),
+                'preview_cards': all_cards
+            }
+        else:
+            # Complete
+            progress_bar.progress(100)
+            status_text.text("✅ Complete!")
+
+            total_cards = sum(d['card_count'] for d in decks)
+            return {
+                'mode': 'separate',
+                'decks': decks,
+                'total_cards': total_cards
+            }
 
     except Exception as e:
         logger.error(f"Processing failed: {str(e)}")
@@ -176,10 +228,11 @@ if not st.session_state.completed:
             help="Upload one or more Japanese MP4 video files"
         )
 
-        deck_name = st.text_input(
-            "Deck Name",
-            placeholder="My Japanese Deck",
-            help="Name for your Anki deck"
+        deck_mode = st.radio(
+            "Deck Mode",
+            options=["Combined Deck", "Separate Decks"],
+            help="Combine all videos into one deck, or create separate decks per video",
+            horizontal=True
         )
 
         api_key = st.text_input(
@@ -193,18 +246,14 @@ if not st.session_state.completed:
     if submit:
         if not uploaded_files or not api_key:
             st.error("Please provide both MP4 file(s) and API key")
-        elif not deck_name:
-            st.error("Please provide a deck name")
         else:
             st.session_state.processing = True
 
             try:
                 with st.spinner("Processing..."):
-                    apkg_path, card_count, preview_cards = process_videos(uploaded_files, deck_name, api_key)
+                    result = process_videos(uploaded_files, deck_mode, api_key)
 
-                    st.session_state.apkg_path = apkg_path
-                    st.session_state.card_count = card_count
-                    st.session_state.preview_cards = preview_cards
+                    st.session_state.result = result
                     st.session_state.completed = True
                     st.rerun()
 
@@ -213,15 +262,15 @@ if not st.session_state.completed:
                 st.session_state.processing = False
 
 else:
-    # Show results
-    st.success(f"✅ Successfully generated {st.session_state.card_count} cards!")
+    # Show results based on mode
+    result = st.session_state.result
 
-    # Preview cards
-    if st.session_state.preview_cards:
+    if result['mode'] == 'combined':
+        st.success(f"✅ Successfully generated {result['card_count']} cards in **{result['deck_name']}**!")
+
+        # Preview cards
         st.subheader("Card Preview")
-
-        # Card display with thumbnail and audio
-        for i, card in enumerate(st.session_state.preview_cards):
+        for i, card in enumerate(result['preview_cards'][:10]):  # Show first 10 cards
             with st.container():
                 col1, col2 = st.columns([3, 2])
 
@@ -233,7 +282,7 @@ else:
                         with st.expander("Show full sentence"):
                             st.write(sentence)
 
-                    # Display thumbnail if available
+                    # Display screenshot
                     if card.get('imageFile') and os.path.exists(card['imageFile']):
                         st.image(card['imageFile'], width=300)
 
@@ -242,28 +291,75 @@ else:
 
                 st.divider()
 
-    # Download button
-    st.divider()
+        if result['card_count'] > 10:
+            st.info(f"Showing 10 of {result['card_count']} cards")
 
-    col1, col2 = st.columns(2)
+        # Download button
+        st.divider()
+        col1, col2 = st.columns(2)
 
-    with col1:
-        with open(st.session_state.apkg_path, 'rb') as f:
-            st.download_button(
-                label="📥 Download APKG",
-                data=f,
-                file_name=os.path.basename(st.session_state.apkg_path),
-                mime="application/apkg",
-                use_container_width=True
-            )
+        with col1:
+            with open(result['apkg_path'], 'rb') as f:
+                st.download_button(
+                    label="📥 Download APKG",
+                    data=f,
+                    file_name=os.path.basename(result['apkg_path']),
+                    mime="application/apkg",
+                    use_container_width=True
+                )
 
-    with col2:
+        with col2:
+            if st.button("🔄 Create Another Deck", use_container_width=True):
+                shutil.rmtree("tmp/current", ignore_errors=True)
+                st.session_state.processing = False
+                st.session_state.completed = False
+                st.session_state.result = None
+                st.rerun()
+
+    else:  # Separate decks mode
+        st.success(f"✅ Successfully generated {result['total_cards']} cards across {len(result['decks'])} decks!")
+
+        # Show deck summaries
+        st.subheader("Generated Decks")
+        for deck in result['decks']:
+            with st.expander(f"📦 {deck['name']} ({deck['card_count']} cards)"):
+                # Preview first 3 cards from this deck
+                for i, card in enumerate(deck['cards'][:3]):
+                    col1, col2 = st.columns([3, 2])
+
+                    with col1:
+                        sentence = card['sentence']
+                        display_sentence = sentence if len(sentence) <= 100 else sentence[:100] + "..."
+                        st.markdown(f"**#{i+1}:** {display_sentence}")
+                        if card.get('imageFile') and os.path.exists(card['imageFile']):
+                            st.image(card['imageFile'], width=200)
+
+                    with col2:
+                        st.audio(card['audioFile'])
+
+                    st.divider()
+
+                if deck['card_count'] > 3:
+                    st.caption(f"Showing 3 of {deck['card_count']} cards")
+
+                # Download button for this deck
+                with open(deck['apkg_path'], 'rb') as f:
+                    st.download_button(
+                        label=f"📥 Download {deck['name']}.apkg",
+                        data=f,
+                        file_name=os.path.basename(deck['apkg_path']),
+                        mime="application/apkg",
+                        use_container_width=True,
+                        key=f"download_{deck['name']}"
+                    )
+
+        # Create another deck button
+        st.divider()
         if st.button("🔄 Create Another Deck", use_container_width=True):
-            # Clean up
             shutil.rmtree("tmp/current", ignore_errors=True)
             st.session_state.processing = False
             st.session_state.completed = False
-            st.session_state.apkg_path = None
+            st.session_state.result = None
             st.rerun()
 
 # Footer
