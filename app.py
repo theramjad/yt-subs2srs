@@ -137,7 +137,7 @@ def process_video(youtube_url: str, api_key: str):
         progress_bar.progress(100)
         status_text.text("✅ Complete!")
 
-        return output_path, len(cards), cards[:3]  # Return path, count, and preview
+        return output_path, len(cards), cards  # Return path, count, and all cards for preview
 
     except Exception as e:
         logger.error(f"Processing failed: {str(e)}")
@@ -188,18 +188,30 @@ else:
 
     # Preview cards
     if st.session_state.preview_cards:
-        st.subheader("Card Preview (first 3 cards)")
+        st.subheader("Card Preview")
 
+        # Create table-like display with columns
         for i, card in enumerate(st.session_state.preview_cards):
-            with st.expander(f"Card {i+1}: {card['sentence'][:50]}..."):
-                # Show screenshot
-                st.image(card['imageFile'], use_container_width=True)
+            with st.container():
+                col1, col2, col3 = st.columns([1, 3, 2])
 
-                # Show audio
-                st.audio(card['audioFile'])
+                with col1:
+                    st.markdown(f"**#{i+1}**")
+                    st.image(card['imageFile'], use_column_width=True)
 
-                # Show sentence
-                st.markdown(f"**Sentence:** {card['sentence']}")
+                with col2:
+                    # Truncate sentence if too long
+                    sentence = card['sentence']
+                    display_sentence = sentence if len(sentence) <= 100 else sentence[:100] + "..."
+                    st.markdown(f"**{display_sentence}**")
+                    if len(sentence) > 100:
+                        with st.expander("Show full sentence"):
+                            st.write(sentence)
+
+                with col3:
+                    st.audio(card['audioFile'])
+
+                st.divider()
 
     # Download button
     st.divider()
