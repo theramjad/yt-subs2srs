@@ -1,9 +1,10 @@
 # Subs2SRS Anki Card Generator
 
-A web application that converts YouTube videos into Anki flashcard decks using AssemblyAI transcription with word-level timestamps, creating subs2srs-style cards with screenshots and audio clips.
+A Python desktop application that converts YouTube videos into Anki flashcard decks using AssemblyAI transcription with word-level timestamps, creating subs2srs-style cards with screenshots and audio clips.
 
 ## Features
 
+- **Simple Desktop App**: Streamlit-based UI runs locally in your browser
 - **YouTube Video Processing**: Downloads videos at 360p resolution
 - **High-Quality Transcription**: Uses AssemblyAI for Japanese transcription with word-level timestamps
 - **Speaker Diarization**: Automatically splits sentences based on speaker changes
@@ -15,35 +16,16 @@ A web application that converts YouTube videos into Anki flashcard decks using A
 - **Card Preview**: Preview cards before downloading
 - **APKG Export**: Ready-to-import Anki deck package
 
-## Tech Stack
-
-### Frontend
-- React with TypeScript
-- Vite for build tooling
-- Axios for API calls
-
-### Backend
-- NestJS
-- AssemblyAI for transcription
-- yt-dlp for video downloads
-- FFmpeg for media processing
-- genanki (Python) for Anki deck generation
-
 ## Prerequisites
 
 ### Required Software
 
-1. **Node.js** (v18 or higher)
-   ```bash
-   node --version
-   ```
-
-2. **Python 3** (for genanki)
+1. **Python 3.10+**
    ```bash
    python3 --version
    ```
 
-3. **yt-dlp** (for YouTube downloads)
+2. **yt-dlp** (for YouTube downloads)
    ```bash
    # macOS
    brew install yt-dlp
@@ -54,9 +36,10 @@ A web application that converts YouTube videos into Anki flashcard decks using A
 
    # Windows
    # Download from https://github.com/yt-dlp/yt-dlp/releases
+   # Or: pip install yt-dlp
    ```
 
-4. **FFmpeg** (for media processing)
+3. **FFmpeg** (for media processing)
    ```bash
    # macOS
    brew install ffmpeg
@@ -66,11 +49,6 @@ A web application that converts YouTube videos into Anki flashcard decks using A
 
    # Windows
    # Download from https://ffmpeg.org/download.html
-   ```
-
-5. **genanki** (Python library)
-   ```bash
-   pip3 install genanki
    ```
 
 ### API Keys
@@ -86,90 +64,39 @@ git clone <repository-url>
 cd yt-subs2srs
 ```
 
-### 2. Install Backend Dependencies
+### 2. Install Python Dependencies
 
 ```bash
-cd backend
-npm install
+pip install -r requirements.txt
 ```
 
-### 3. Install Frontend Dependencies
+Or with a virtual environment (recommended):
 
 ```bash
-cd ../frontend
-npm install
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+pip install -r requirements.txt
 ```
-
-### 4. Configure Proxy (Optional)
-
-If you need to use a proxy for YouTube downloads:
-
-```bash
-cd ../backend
-nano proxy.config.json
-```
-
-Edit the configuration:
-```json
-{
-  "enabled": true,
-  "url": "http://your-proxy:port",
-  "type": "residential",
-  "rotation": true
-}
-```
-
-Recommended proxy providers: Bright Data, Oxylabs, SmartProxy
 
 ## Running the Application
 
-### Development Mode
+Simply run:
 
-You need to run both frontend and backend servers.
-
-#### Terminal 1 - Backend Server
 ```bash
-cd backend
-npm run start:dev
+streamlit run app.py
 ```
 
-The backend will run on `http://localhost:3000`
-
-#### Terminal 2 - Frontend Server
-```bash
-cd frontend
-npm run dev
-```
-
-The frontend will run on `http://localhost:5173`
-
-### Production Mode
-
-#### Build Backend
-```bash
-cd backend
-npm run build
-npm start
-```
-
-#### Build Frontend
-```bash
-cd frontend
-npm run build
-npm run preview
-```
+The app will automatically open in your default web browser at `http://localhost:8501`
 
 ## Usage
 
-1. **Open the Application**: Navigate to `http://localhost:5173` in your browser
+1. **Launch the App**: Run `streamlit run app.py`
 
 2. **Enter YouTube URL**: Paste the URL of the Japanese YouTube video you want to convert
 
-3. **Enter AssemblyAI API Key**:
-   - Your API key is stored in browser localStorage for convenience
-   - It's only sent to your local backend server
+3. **Enter AssemblyAI API Key**: Your API key (get one free at assemblyai.com)
 
-4. **Generate Deck**: Click "Generate Deck" and wait for processing
+4. **Generate Deck**: Click the "Generate Deck" button and wait for processing
    - Processing steps:
      - Downloading video (360p)
      - Extracting audio
@@ -178,7 +105,7 @@ npm run preview
      - Generating cards
      - Creating deck
 
-5. **Preview Cards**: Once complete, preview the first few cards
+5. **Preview Cards**: Once complete, preview the first 3 cards
 
 6. **Download APKG**: Click "Download APKG" to get your Anki deck
 
@@ -199,33 +126,17 @@ Each Anki card contains:
 
 ```
 yt-subs2srs/
-├── backend/
-│   ├── src/
-│   │   ├── modules/
-│   │   │   ├── video/          # Video download service
-│   │   │   ├── audio/          # Audio extraction service
-│   │   │   ├── transcription/  # AssemblyAI service
-│   │   │   ├── cards/          # Card generation services
-│   │   │   └── processing/     # Main processing pipeline
-│   │   ├── scripts/
-│   │   │   └── generate_apkg.py # Python genanki script
-│   │   ├── app.module.ts
-│   │   └── main.ts
-│   ├── proxy.config.json
-│   ├── package.json
-│   └── tsconfig.json
-├── frontend/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── services/
-│   │   │   └── api.ts         # API client
-│   │   ├── App.tsx            # Main app component
-│   │   ├── App.css
-│   │   └── main.tsx
-│   ├── index.html
-│   ├── package.json
-│   └── vite.config.ts
-├── plan.md
+├── app.py                      # Main Streamlit application
+├── modules/
+│   ├── video_downloader.py     # yt-dlp video downloads
+│   ├── audio_processor.py      # FFmpeg audio extraction
+│   ├── transcriber.py          # AssemblyAI transcription
+│   ├── segmenter.py            # Sentence segmentation
+│   ├── screenshot.py           # Screenshot extraction
+│   └── anki_deck.py            # genanki deck generation
+├── tmp/                        # Temporary working directory
+├── requirements.txt            # Python dependencies
+├── plan.md                     # Original implementation plan
 └── README.md
 ```
 
@@ -263,69 +174,40 @@ Install FFmpeg:
 ffmpeg -version
 ```
 
-### "genanki module not found"
-Install genanki:
-```bash
-pip3 install genanki
-python3 -c "import genanki"
-```
-
 ### "YouTube download failed"
 - Check if the video is available in your region
-- Try enabling proxy in `proxy.config.json`
 - Verify the YouTube URL is correct
+- Make sure yt-dlp is up to date: `pip install --upgrade yt-dlp`
 
 ### "Transcription failed"
 - Verify your AssemblyAI API key is correct
 - Check if you have sufficient API credits
 - Ensure the video has clear Japanese audio
 
-### Backend won't start
+### Port already in use
+If port 8501 is already in use:
 ```bash
-cd backend
-rm -rf node_modules package-lock.json
-npm install
+streamlit run app.py --server.port 8502
 ```
 
-### Frontend won't start
+## Packaging as Standalone Executable
+
+You can package this as a standalone executable using PyInstaller:
+
 ```bash
-cd frontend
-rm -rf node_modules package-lock.json
-npm install
+pip install pyinstaller
+pyinstaller --onefile --windowed app.py
 ```
 
-## API Endpoints
+Note: You'll need to include the modules folder and ensure FFmpeg and yt-dlp are accessible.
 
-- `POST /api/process` - Start processing a video
-- `GET /api/status/:jobId` - Get processing status
-- `GET /api/preview/:jobId` - Get card preview
-- `GET /api/download/:jobId` - Download APKG file
-- `GET /api/health` - Health check
+## Tech Stack
 
-## Development
-
-### Backend Development
-```bash
-cd backend
-npm run start:dev  # Auto-reload on changes
-```
-
-### Frontend Development
-```bash
-cd frontend
-npm run dev  # Hot module replacement
-```
-
-### Linting
-```bash
-# Backend
-cd backend
-npm run lint
-
-# Frontend
-cd frontend
-npm run lint
-```
+- **Streamlit** - Web UI framework
+- **yt-dlp** - YouTube video downloads
+- **FFmpeg** - Media processing
+- **AssemblyAI** - Japanese transcription with word-level timestamps
+- **genanki** - Anki deck generation
 
 ## License
 
@@ -341,6 +223,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 - [yt-dlp](https://github.com/yt-dlp/yt-dlp) for YouTube downloads
 - [FFmpeg](https://ffmpeg.org/) for media processing
 - [genanki](https://github.com/kerrickstaley/genanki) for Anki deck generation
+- [Streamlit](https://streamlit.io/) for the amazing UI framework
 
 ## Support
 

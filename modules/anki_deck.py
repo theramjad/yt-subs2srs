@@ -1,17 +1,14 @@
-#!/usr/bin/env python3
-"""
-Generate Anki APKG file from subs2srs cards using genanki
-Usage: python generate_apkg.py <cards_json_file> <output_apkg_path>
-"""
-
-import sys
-import json
-import genanki
-import random
+"""Anki deck generation using genanki"""
 import os
+import random
+import logging
+import genanki
+
+logger = logging.getLogger(__name__)
+
 
 def create_subs2srs_model():
-    """Create the Anki note model for subs2srs cards"""
+    """Create Anki note model for subs2srs cards"""
     model_id = random.randrange(1 << 30, 1 << 31)
 
     return genanki.Model(
@@ -45,21 +42,24 @@ img {
         """
     )
 
-def generate_apkg(cards_data_path, output_path):
+
+def create_anki_deck(
+    cards: list,
+    deck_name: str,
+    output_path: str
+) -> str:
     """
-    Generate APKG file from cards data
+    Create APKG file from cards
 
     Args:
-        cards_data_path: Path to JSON file containing cards data
-        output_path: Path where APKG file should be saved
-    """
-    # Load cards data
-    with open(cards_data_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
+        cards: List of card dicts with audioFile, imageFile, sentence
+        deck_name: Name for the deck
+        output_path: Path for output APKG file
 
-    deck_name = data.get('deckName', 'Japanese Video')
-    cards = data.get('cards', [])
-    media_dir = data.get('mediaDir', '')
+    Returns:
+        str: Path to created APKG file
+    """
+    logger.info(f"Creating Anki deck: {deck_name}")
 
     # Create deck
     deck_id = random.randrange(1 << 30, 1 << 31)
@@ -71,17 +71,17 @@ def generate_apkg(cards_data_path, output_path):
     # Collect media files
     media_files = []
 
-    # Add cards to deck
+    # Add cards
     for card in cards:
-        audio_file = card.get('audioFile', '')
-        image_file = card.get('imageFile', '')
-        sentence = card.get('sentence', '')
+        audio_file = card['audioFile']
+        image_file = card['imageFile']
+        sentence = card['sentence']
 
-        # Get basenames for media references in Anki
+        # Get basenames for Anki references
         audio_basename = os.path.basename(audio_file)
         image_basename = os.path.basename(image_file)
 
-        # Add full paths to media files list
+        # Add to media files
         if os.path.exists(audio_file):
             media_files.append(audio_file)
         if os.path.exists(image_file):
@@ -104,21 +104,5 @@ def generate_apkg(cards_data_path, output_path):
     package.media_files = media_files
     package.write_to_file(output_path)
 
-    print(f'Successfully created APKG: {output_path}')
-    print(f'Deck name: {deck_name}')
-    print(f'Number of cards: {len(cards)}')
-    print(f'Media files: {len(media_files)}')
-
-if __name__ == '__main__':
-    if len(sys.argv) != 3:
-        print('Usage: python generate_apkg.py <cards_json_file> <output_apkg_path>')
-        sys.exit(1)
-
-    cards_data_path = sys.argv[1]
-    output_path = sys.argv[2]
-
-    if not os.path.exists(cards_data_path):
-        print(f'Error: Cards data file not found: {cards_data_path}')
-        sys.exit(1)
-
-    generate_apkg(cards_data_path, output_path)
+    logger.info(f"APKG created: {output_path} ({len(cards)} cards)")
+    return output_path

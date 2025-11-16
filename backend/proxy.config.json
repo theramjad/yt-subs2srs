@@ -1,7 +1,0 @@
-{
-  "enabled": false,
-  "url": "http://proxy-provider:port",
-  "type": "residential",
-  "rotation": true,
-  "comment": "Set enabled to true and configure your proxy URL. Recommended providers: Bright Data, Oxylabs, SmartProxy"
-}
