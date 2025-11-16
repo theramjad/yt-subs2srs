@@ -378,4 +378,4 @@ else:
 
 # Footer
 st.divider()
-st.caption("Look at the [sourcecode on GitHub](https://github.com/theramjad/yt-subs2srs)")
+st.caption("Look at the [source code on GitHub](https://github.com/theramjad/yt-subs2srs)")
