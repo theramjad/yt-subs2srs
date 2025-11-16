@@ -1,16 +1,16 @@
 # Subs2SRS Anki Card Generator
 
-A Python desktop application that converts YouTube videos into Anki flashcard decks using AssemblyAI transcription with word-level timestamps, creating subs2srs-style cards with screenshots and audio clips.
+A Python desktop application that converts YouTube videos into Anki flashcard decks using AssemblyAI transcription with word-level timestamps, creating subs2srs-style cards with thumbnails and audio clips.
 
 ## Features
 
 - **Simple Desktop App**: Streamlit-based UI runs locally in your browser
-- **YouTube Video Processing**: Downloads videos at 360p resolution
+- **YouTube Video Processing**: Downloads audio and thumbnails from YouTube
 - **High-Quality Transcription**: Uses AssemblyAI for Japanese transcription with word-level timestamps
 - **Speaker Diarization**: Automatically splits sentences based on speaker changes
 - **Smart Segmentation**: Intelligently segments transcript into sentences
 - **Media-Rich Cards**: Each card includes:
-  - Screenshot from the video (at sentence start)
+  - YouTube video thumbnail
   - Audio clip with 250ms padding
   - Japanese sentence text
 - **Card Preview**: Preview cards before downloading
@@ -98,14 +98,14 @@ The app will automatically open in your default web browser at `http://localhost
 
 4. **Generate Deck**: Click the "Generate Deck" button and wait for processing
    - Processing steps:
-     - Downloading video (360p)
+     - Downloading audio and thumbnail
      - Extracting audio
      - Transcribing (this takes the longest, several minutes)
      - Segmenting into sentences
      - Generating cards
      - Creating deck
 
-5. **Preview Cards**: Once complete, preview the first 3 cards
+5. **Preview Cards**: Once complete, preview cards with thumbnails and audio
 
 6. **Download APKG**: Click "Download APKG" to get your Anki deck
 
@@ -117,7 +117,7 @@ Each Anki card contains:
 
 - **Front**:
   - Audio clip (plays automatically)
-  - Screenshot from video
+  - YouTube video thumbnail
 - **Back**:
   - Same content as front
   - Japanese sentence text
@@ -155,9 +155,8 @@ The application uses the following rules to segment sentences:
 
 ### Media Settings
 
-- **Video Quality**: 360p
 - **Audio Format**: MP3, 128kbps, 44.1kHz, stereo
-- **Screenshot Format**: WebP, 640x360 resolution
+- **Image**: YouTube thumbnail (JPG format)
 - **Audio Padding**: 250ms before and after each sentence
 
 ## Troubleshooting

@@ -4,7 +4,7 @@ import shutil
 import logging
 import streamlit as st
 from pathlib import Path
-from modules.video_downloader import download_audio, get_video_title
+from modules.video_downloader import download_audio, get_video_title, download_thumbnail
 from modules.audio_processor import extract_audio, extract_audio_clip
 from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
@@ -61,16 +61,17 @@ def process_video(youtube_url: str, api_key: str):
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Step 1: Download audio and video separately
+        # Step 1: Download audio and thumbnail
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("⬇️ Downloading audio...")
+        status_text.text("⬇️ Downloading audio and thumbnail...")
         progress_bar.progress(10)
 
-        # Get video title and download audio only
+        # Get video title and download audio + thumbnail
         title = get_video_title(youtube_url)
         audio_file_path = download_audio(youtube_url, str(work_dir))
+        thumbnail_path = download_thumbnail(youtube_url, str(work_dir))
 
         st.info(f"📹 **{title}**")
 
@@ -113,7 +114,7 @@ def process_video(youtube_url: str, api_key: str):
 
             cards.append({
                 'audioFile': audio_clip_path,
-                'imageFile': None,
+                'imageFile': thumbnail_path,
                 'sentence': sentence.text
             })
 
@@ -187,7 +188,7 @@ else:
     if st.session_state.preview_cards:
         st.subheader("Card Preview")
 
-        # Audio-only card display
+        # Card display with thumbnail and audio
         for i, card in enumerate(st.session_state.preview_cards):
             with st.container():
                 col1, col2 = st.columns([3, 2])
@@ -199,6 +200,10 @@ else:
                     if len(sentence) > 100:
                         with st.expander("Show full sentence"):
                             st.write(sentence)
+
+                    # Display thumbnail if available
+                    if card.get('imageFile') and os.path.exists(card['imageFile']):
+                        st.image(card['imageFile'], width=300)
 
                 with col2:
                     st.audio(card['audioFile'])

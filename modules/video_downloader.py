@@ -126,6 +126,57 @@ def download_video(youtube_url: str, output_dir: str) -> str:
         raise
 
 
+def download_thumbnail(youtube_url: str, output_dir: str) -> str:
+    """
+    Download YouTube video thumbnail
+
+    Args:
+        youtube_url: YouTube video URL
+        output_dir: Directory to save the thumbnail
+
+    Returns:
+        str: Path to downloaded thumbnail file
+    """
+    logger.info(f"Downloading thumbnail: {youtube_url}")
+
+    # Create output directory
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Download thumbnail
+    cmd = [
+        "yt-dlp",
+        "--write-thumbnail",
+        "--skip-download",
+        "--convert-thumbnails", "jpg",
+        "--output", os.path.join(output_dir, "thumbnail"),
+        youtube_url
+    ]
+
+    try:
+        subprocess.run(
+            cmd,
+            check=True,
+            capture_output=True,
+            text=True
+        )
+
+        # Find the downloaded thumbnail file
+        for ext in ['.jpg', '.jpeg', '.webp', '.png']:
+            thumbnail_path = os.path.join(output_dir, f"thumbnail{ext}")
+            if os.path.exists(thumbnail_path):
+                logger.info(f"Thumbnail downloaded: {thumbnail_path}")
+                return thumbnail_path
+
+        raise FileNotFoundError("Thumbnail file not found after download")
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to download thumbnail: {e.stderr}")
+        raise Exception(f"Thumbnail download failed: {e.stderr}")
+    except Exception as e:
+        logger.error(f"Thumbnail download error: {str(e)}")
+        raise
+
+
 def download_audio_and_video(youtube_url: str, output_dir: str) -> tuple[str, str, str]:
     """
     Download both audio and video from YouTube URL
