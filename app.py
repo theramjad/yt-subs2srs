@@ -4,11 +4,11 @@ import shutil
 import logging
 import streamlit as st
 from pathlib import Path
-from modules.video_downloader import download_video
+from modules.video_downloader import download_audio_and_video
 from modules.audio_processor import extract_audio, extract_audio_clip
 from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
-from modules.storyboard_extractor import download_and_setup_storyboard
+from modules.video_frame_extractor import VideoFrameExtractor
 from modules.anki_deck import create_anki_deck
 
 # Configure logging
@@ -62,25 +62,25 @@ def process_video(youtube_url: str, api_key: str):
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Step 1: Download video (for audio) and storyboard (for screenshots)
+        # Step 1: Download audio and video separately
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("⬇️ Downloading audio and storyboard...")
+        status_text.text("⬇️ Downloading audio and video...")
         progress_bar.progress(10)
 
-        # Download video (will get audio-only, which is fine for our purposes)
-        video_path, title = download_video(youtube_url, str(work_dir))
+        # Download audio and video separately
+        audio_file_path, video_path, title = download_audio_and_video(youtube_url, str(work_dir))
 
-        # Download storyboard for screenshots
-        storyboard = download_and_setup_storyboard(youtube_url, str(work_dir))
+        # Initialize frame extractor
+        frame_extractor = VideoFrameExtractor(video_path)
 
         st.info(f"📹 **{title}**")
 
         # Step 2: Extract audio
         status_text.text("🎵 Extracting audio...")
         progress_bar.progress(20)
-        audio_path = extract_audio(video_path, str(work_dir))
+        audio_path = extract_audio(audio_file_path, str(work_dir))
 
         # Step 3: Transcribe
         status_text.text("🎤 Transcribing audio (this may take several minutes)...")
@@ -114,9 +114,9 @@ def process_video(youtube_url: str, api_key: str):
                 audio_clip_path
             )
 
-            # Extract screenshot from storyboard
+            # Extract frame from video
             screenshot_path = str(work_dir / f"screenshot_{i}.jpg")
-            storyboard.extract_thumbnail(
+            frame_extractor.extract_frame(
                 sentence.start_time,
                 screenshot_path
             )
@@ -127,8 +127,11 @@ def process_video(youtube_url: str, api_key: str):
                 'sentence': sentence.text
             })
 
-        # Delete video to save space
-        os.remove(video_path)
+        # Delete video and audio files to save space
+        if os.path.exists(video_path):
+            os.remove(video_path)
+        if os.path.exists(audio_file_path):
+            os.remove(audio_file_path)
 
         # Step 6: Create APKG
         status_text.text("📦 Creating Anki deck package...")
