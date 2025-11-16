@@ -100,19 +100,18 @@ If you want to process YouTube videos, first download them as MP4 files using yt
 
 ```bash
 # Download at 360p resolution (recommended for file size)
-yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" https://www.youtube.com/watch?v=n-HOrDjd7e8
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-format mp4 "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # Or download best quality (larger file size)
-yt-dlp https://www.youtube.com/watch?v=YOUR_VIDEO_ID
+yt-dlp --merge-output-format mp4 "https://www.youtube.com/watch?v=VIDEO_ID"
 
 # Download playlist
-yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" "PLAYLIST_URL"
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-format mp4 "PLAYLIST_URL"
 ```
 
-**Example** (Japanese anime episode):
+**Example** (Japanese content):
 ```bash
-yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" \
-  https://www.youtube.com/watch?v=n-HOrDjd7e8&list=PLap_QVkdutQ-BvaNtKKyiU5w5BB8pKJD4&index=7
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-format mp4 "https://www.youtube.com/watch?v=khRrXguNv3Q"
 ```
 
 ### Step 2: Generate Anki Cards
@@ -205,7 +204,7 @@ ffmpeg -version
 The upload limit is 500MB per file. Compress your video:
 ```bash
 # Using yt-dlp to download at lower resolution
-yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" VIDEO_URL
+yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-format mp4 "VIDEO_URL"
 
 # Or compress existing file with FFmpeg
 ffmpeg -i input.mp4 -vf scale=640:360 -c:v libx264 -crf 28 -c:a aac -b:a 96k output.mp4
