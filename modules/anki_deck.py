@@ -79,20 +79,26 @@ def create_anki_deck(
 
         # Get basenames for Anki references
         audio_basename = os.path.basename(audio_file)
-        image_basename = os.path.basename(image_file)
 
-        # Add to media files
+        # Handle optional image
+        if image_file:
+            image_basename = os.path.basename(image_file)
+            image_html = f'<img src="{image_basename}">'
+            if os.path.exists(image_file):
+                media_files.append(image_file)
+        else:
+            image_html = ''
+
+        # Add audio to media files
         if os.path.exists(audio_file):
             media_files.append(audio_file)
-        if os.path.exists(image_file):
-            media_files.append(image_file)
 
         # Create note
         note = genanki.Note(
             model=model,
             fields=[
                 f'[sound:{audio_basename}]',
-                f'<img src="{image_basename}">',
+                image_html,
                 sentence,
             ]
         )
