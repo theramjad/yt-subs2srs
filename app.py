@@ -56,6 +56,9 @@ st.markdown('<h1 class="main-header">🎴 Subs2SRS Anki Card Generator</h1>', un
 st.markdown('<p class="subtitle">Convert MP4 videos to Anki flashcard decks</p>', unsafe_allow_html=True)
 
 # Initialize session state
+if 'session_id' not in st.session_state:
+    # Generate unique session ID for multi-user isolation
+    st.session_state.session_id = hashlib.md5(f"{time.time()}{os.urandom(16).hex()}".encode()).hexdigest()
 if 'processing' not in st.session_state:
     st.session_state.processing = False
 if 'completed' not in st.session_state:
@@ -67,8 +70,8 @@ if 'apkg_path' not in st.session_state:
 def process_videos(uploaded_files, deck_mode: str, api_key: str):
     """Main processing pipeline for multiple MP4 files"""
 
-    # Create temp directory
-    work_dir = Path("tmp") / "current"
+    # Create session-specific temp directory for multi-user isolation
+    work_dir = Path("tmp") / st.session_state.session_id
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
@@ -322,7 +325,9 @@ else:
 
         with col2:
             if st.button("🔄 Create Another Deck", use_container_width=True):
-                shutil.rmtree("tmp/current", ignore_errors=True)
+                # Clean up session-specific directory
+                session_dir = Path("tmp") / st.session_state.session_id
+                shutil.rmtree(session_dir, ignore_errors=True)
                 st.session_state.processing = False
                 st.session_state.completed = False
                 st.session_state.result = None
@@ -368,7 +373,9 @@ else:
         # Create another deck button
         st.divider()
         if st.button("🔄 Create Another Deck", use_container_width=True):
-            shutil.rmtree("tmp/current", ignore_errors=True)
+            # Clean up session-specific directory
+            session_dir = Path("tmp") / st.session_state.session_id
+            shutil.rmtree(session_dir, ignore_errors=True)
             st.session_state.processing = False
             st.session_state.completed = False
             st.session_state.result = None
