@@ -94,10 +94,11 @@ def download_video(youtube_url: str, output_dir: str) -> str:
 
     video_path = os.path.join(output_dir, "video.mp4")
 
-    # Download video at 480p quality (SD)
+    # Download video with robust fallbacks
+    # Try video-only first, fall back to combined or worst if needed
     cmd = [
         "yt-dlp",
-        "--format", "best[height<=480]/best",
+        "--format", "bv*/b/worst",
         "--output", video_path,
         youtube_url
     ]
