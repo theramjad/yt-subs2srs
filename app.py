@@ -8,7 +8,7 @@ from modules.video_downloader import download_video
 from modules.audio_processor import extract_audio, extract_audio_clip
 from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
-from modules.screenshot import extract_screenshot
+from modules.storyboard_extractor import download_and_setup_storyboard
 from modules.anki_deck import create_anki_deck
 
 # Configure logging
@@ -62,13 +62,18 @@ def process_video(youtube_url: str, api_key: str):
     work_dir.mkdir(parents=True, exist_ok=True)
 
     try:
-        # Step 1: Download video
+        # Step 1: Download video (for audio) and storyboard (for screenshots)
         progress_bar = st.progress(0)
         status_text = st.empty()
 
-        status_text.text("⬇️ Downloading video (360p)...")
+        status_text.text("⬇️ Downloading audio and storyboard...")
         progress_bar.progress(10)
+
+        # Download video (will get audio-only, which is fine for our purposes)
         video_path, title = download_video(youtube_url, str(work_dir))
+
+        # Download storyboard for screenshots
+        storyboard = download_and_setup_storyboard(youtube_url, str(work_dir))
 
         st.info(f"📹 **{title}**")
 
@@ -109,10 +114,9 @@ def process_video(youtube_url: str, api_key: str):
                 audio_clip_path
             )
 
-            # Extract screenshot
-            screenshot_path = str(work_dir / f"screenshot_{i}.webp")
-            extract_screenshot(
-                video_path,
+            # Extract screenshot from storyboard
+            screenshot_path = str(work_dir / f"screenshot_{i}.jpg")
+            storyboard.extract_thumbnail(
                 sentence.start_time,
                 screenshot_path
             )
