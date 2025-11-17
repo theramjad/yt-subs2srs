@@ -12,6 +12,7 @@ from modules.transcriber import transcribe_audio
 from modules.segmenter import segment_into_sentences, filter_valid_sentences
 from modules.anki_deck import create_anki_deck
 from modules.video_frame_extractor import VideoFrameExtractor
+from modules.cache_manager import CacheManager, cleanup_old_sessions
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -52,6 +53,14 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# Cleanup old sessions on app startup (once per session)
+if 'cleanup_done' not in st.session_state:
+    try:
+        cleanup_old_sessions(Path("tmp"), max_age_hours=1.0)
+        st.session_state.cleanup_done = True
+    except Exception as e:
+        logger.error(f"Cleanup failed: {e}")
+
 # Header
 st.markdown('<h1 class="main-header">Video to Subs2srs Decks</h1>', unsafe_allow_html=True)
 st.markdown('<p class="subtitle">Convert MP4 videos to Anki flashcard decks</p>', unsafe_allow_html=True)
@@ -66,14 +75,25 @@ if 'completed' not in st.session_state:
     st.session_state.completed = False
 if 'apkg_path' not in st.session_state:
     st.session_state.apkg_path = None
+if 'transcription_cache' not in st.session_state:
+    st.session_state.transcription_cache = {}  # {video_name: cached_data}
+if 'can_regenerate' not in st.session_state:
+    st.session_state.can_regenerate = False
+if 'last_limits' not in st.session_state:
+    st.session_state.last_limits = {'max_words': 15, 'limit_type': 'Soft Limit'}
+if 'uploaded_video_names' not in st.session_state:
+    st.session_state.uploaded_video_names = []
 
 
-def process_videos(uploaded_files, deck_mode: str, api_key: str):
+def process_videos(uploaded_files, deck_mode: str, api_key: str, soft_limit: int, hard_limit: int, use_cache: bool = False):
     """Main processing pipeline for multiple MP4 files"""
 
     # Create session-specific temp directory for multi-user isolation
     work_dir = Path("tmp") / st.session_state.session_id
     work_dir.mkdir(parents=True, exist_ok=True)
+
+    # Initialize cache manager
+    cache_mgr = CacheManager(work_dir)
 
     try:
         progress_bar = st.progress(0)
@@ -99,32 +119,55 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str):
             # Extract filename without extension
             video_name = Path(uploaded_file.name).stem
 
-            # Step 1: Save uploaded MP4 file
-            status_text.text(f"📁 Saving {uploaded_file.name}...")
-            video_path = work_dir / uploaded_file.name
-            with open(video_path, 'wb') as f:
-                f.write(uploaded_file.read())
+            # Check if we have cached transcript
+            cached_data = cache_mgr.get_transcript(video_name) if use_cache else None
 
-            progress = int((file_idx / len(uploaded_files)) * 10)
-            progress_bar.progress(progress)
+            if cached_data:
+                # Use cached data
+                status_text.text(f"📦 Using cached transcription for {uploaded_file.name}...")
+                words = cache_mgr.words_to_objects(cached_data['words'])
+                video_path = cached_data['video_path']
+                audio_path = cached_data['audio_path']
 
-            # Step 2: Extract audio
-            status_text.text(f"🎵 Extracting audio from {uploaded_file.name}...")
-            audio_path = extract_audio(str(video_path), str(work_dir))
+                # Re-extract audio if it was deleted
+                if not os.path.exists(audio_path):
+                    status_text.text(f"🎵 Re-extracting audio from {uploaded_file.name}...")
+                    audio_path = extract_audio(video_path, str(cache_mgr.source_dir))
+                    # Update cache with new audio path
+                    cache_mgr.save_transcript(video_name, words, video_path, audio_path)
 
-            progress = int((file_idx / len(uploaded_files)) * 20) + 10
-            progress_bar.progress(progress)
+                progress = int((file_idx / len(uploaded_files)) * 50)
+                progress_bar.progress(progress)
+            else:
+                # Step 1: Save uploaded MP4 file
+                status_text.text(f"📁 Saving {uploaded_file.name}...")
+                video_path = cache_mgr.source_dir / uploaded_file.name
+                with open(video_path, 'wb') as f:
+                    f.write(uploaded_file.read())
 
-            # Step 3: Transcribe
-            status_text.text(f"🎤 Transcribing {uploaded_file.name} (this may take several minutes)...")
-            words = transcribe_audio(audio_path, api_key)
+                progress = int((file_idx / len(uploaded_files)) * 10)
+                progress_bar.progress(progress)
+
+                # Step 2: Extract audio
+                status_text.text(f"🎵 Extracting audio from {uploaded_file.name}...")
+                audio_path = extract_audio(str(video_path), str(cache_mgr.source_dir))
+
+                progress = int((file_idx / len(uploaded_files)) * 20) + 10
+                progress_bar.progress(progress)
+
+                # Step 3: Transcribe
+                status_text.text(f"🎤 Transcribing {uploaded_file.name} (this may take several minutes)...")
+                words = transcribe_audio(audio_path, api_key)
+
+                # Cache the transcript
+                cache_mgr.save_transcript(video_name, words, str(video_path), audio_path)
 
             progress = int((file_idx / len(uploaded_files)) * 30) + 20
             progress_bar.progress(progress)
 
             # Step 4: Segment into sentences
             status_text.text(f"✂️ Segmenting {uploaded_file.name} into sentences...")
-            sentences = segment_into_sentences(words)
+            sentences = segment_into_sentences(words, soft_limit=soft_limit, hard_limit=hard_limit)
             valid_sentences = filter_valid_sentences(sentences)
 
             st.info(f"📹 **{video_name}**: {len(valid_sentences)} sentences")
@@ -176,9 +219,7 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str):
                 else:
                     video_cards.append(card)
 
-            # Delete source audio file to save space
-            if os.path.exists(audio_path):
-                os.remove(audio_path)
+            # Keep source audio/video files for regeneration (cleaned up after 1 hour)
 
             # For separate decks mode, create APKG for this video
             if not combined_mode:
@@ -204,23 +245,31 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str):
             progress_bar.progress(100)
             status_text.text("✅ Complete!")
 
+            # Store video names for regeneration
+            video_names = [Path(f.name).stem for f in uploaded_files]
+
             return {
                 'mode': 'combined',
                 'deck_name': deck_name,
                 'apkg_path': output_path,
                 'card_count': len(all_cards),
-                'preview_cards': all_cards
+                'preview_cards': all_cards,
+                'video_names': video_names
             }
         else:
             # Complete
             progress_bar.progress(100)
             status_text.text("✅ Complete!")
 
+            # Store video names for regeneration
+            video_names = [Path(f.name).stem for f in uploaded_files]
+
             total_cards = sum(d['card_count'] for d in decks)
             return {
                 'mode': 'separate',
                 'decks': decks,
-                'total_cards': total_cards
+                'total_cards': total_cards,
+                'video_names': video_names
             }
 
     except Exception as e:
@@ -252,6 +301,32 @@ if not st.session_state.completed:
             help="Get your free API key at assemblyai.com"
         )
 
+        st.markdown("#### Word Limit Settings")
+        col1, col2 = st.columns(2)
+
+        with col1:
+            max_words = st.number_input(
+                "Maximum Words per Sentence",
+                min_value=3,
+                max_value=50,
+                value=15,
+                help="Maximum number of words per sentence. Note: 'Words' are determined by AssemblyAI's tokenization (e.g., は=1 word, 勉強=1 word, です=1 word)."
+            )
+
+        with col2:
+            limit_type = st.radio(
+                "Limit Type",
+                options=["Soft Limit", "Hard Limit"],
+                index=0,
+                help=(
+                    "**Soft Limit**: Tries to split at max words, but only when Japanese punctuation is found (。！？、). "
+                    "Sentences may exceed the limit if no punctuation appears. Good for natural sentence breaks.\n\n"
+                    "**Hard Limit**: Always splits at exactly max words, regardless of punctuation or sentence structure. "
+                    "Guarantees no sentence exceeds the limit, but may split mid-sentence."
+                ),
+                horizontal=True
+            )
+
         submit = st.form_submit_button("🚀 Generate Deck", use_container_width=True)
 
     if submit:
@@ -260,12 +335,23 @@ if not st.session_state.completed:
         else:
             st.session_state.processing = True
 
+            # Convert limit_type to soft_limit and hard_limit parameters
+            if limit_type == "Soft Limit":
+                soft_limit = max_words
+                hard_limit = 50  # Effectively no hard limit
+            else:  # Hard Limit
+                soft_limit = max_words
+                hard_limit = max_words  # Both limits are the same
+
             try:
                 with st.spinner("Processing..."):
-                    result = process_videos(uploaded_files, deck_mode, api_key)
+                    result = process_videos(uploaded_files, deck_mode, api_key, soft_limit, hard_limit, use_cache=False)
 
                     st.session_state.result = result
                     st.session_state.completed = True
+                    st.session_state.can_regenerate = True
+                    st.session_state.last_limits = {'max_words': max_words, 'limit_type': limit_type}
+                    st.session_state.uploaded_video_names = result['video_names']
                     st.rerun()
 
             except Exception as e:
@@ -281,7 +367,7 @@ else:
 
         # Preview cards
         st.subheader("Card Preview")
-        for i, card in enumerate(result['preview_cards'][:10]):  # Show first 10 cards
+        for i, card in enumerate(result['preview_cards'][:30]):  # Show first 30 cards
             with st.container():
                 col1, col2 = st.columns([3, 2])
 
@@ -302,8 +388,8 @@ else:
 
                 st.divider()
 
-        if result['card_count'] > 10:
-            st.info(f"Showing 10 of {result['card_count']} cards")
+        if result['card_count'] > 30:
+            st.info(f"Showing 30 of {result['card_count']} cards")
 
         # Download button
         st.divider()
@@ -327,7 +413,85 @@ else:
                 st.session_state.processing = False
                 st.session_state.completed = False
                 st.session_state.result = None
+                st.session_state.can_regenerate = False
+                st.session_state.transcription_cache = {}
                 st.rerun()
+
+        # Regeneration section
+        if st.session_state.can_regenerate:
+            st.divider()
+            st.subheader("🔄 Regenerate with Different Limits")
+            st.info("💡 Using cached transcription - only re-segmenting (fast!)")
+
+            with st.form("regenerate_form"):
+                st.markdown(f"**Current settings:** {st.session_state.last_limits['max_words']} words ({st.session_state.last_limits['limit_type']})")
+
+                col1, col2 = st.columns(2)
+
+                with col1:
+                    new_max_words = st.number_input(
+                        "New Maximum Words",
+                        min_value=3,
+                        max_value=50,
+                        value=st.session_state.last_limits['max_words'],
+                        help="Maximum number of words per sentence"
+                    )
+
+                with col2:
+                    new_limit_type = st.radio(
+                        "New Limit Type",
+                        options=["Soft Limit", "Hard Limit"],
+                        index=0 if st.session_state.last_limits['limit_type'] == "Soft Limit" else 1,
+                        help=(
+                            "**Soft Limit**: Tries to split at max words when punctuation found.\n\n"
+                            "**Hard Limit**: Always splits at exactly max words."
+                        ),
+                        horizontal=True
+                    )
+
+                regenerate_submit = st.form_submit_button("🔄 Regenerate Deck", use_container_width=True)
+
+            if regenerate_submit:
+                # Convert limit_type to soft_limit and hard_limit
+                if new_limit_type == "Soft Limit":
+                    new_soft_limit = new_max_words
+                    new_hard_limit = 50
+                else:
+                    new_soft_limit = new_max_words
+                    new_hard_limit = new_max_words
+
+                # Create a "fake" uploaded_files list for regeneration
+                # We need to get the actual files from cache
+                work_dir = Path("tmp") / st.session_state.session_id
+                cache_mgr = CacheManager(work_dir)
+
+                class FakeUploadedFile:
+                    def __init__(self, name):
+                        self.name = name
+
+                    def read(self):
+                        return b''  # Not used when use_cache=True
+
+                fake_files = [FakeUploadedFile(f"{name}.mp4") for name in result['video_names']]
+
+                try:
+                    with st.spinner("Regenerating with new limits..."):
+                        # Use cached transcriptions
+                        new_result = process_videos(
+                            fake_files,
+                            "Combined Deck" if result['mode'] == 'combined' else "Separate Decks",
+                            "",  # API key not needed when using cache
+                            new_soft_limit,
+                            new_hard_limit,
+                            use_cache=True
+                        )
+
+                        st.session_state.result = new_result
+                        st.session_state.last_limits = {'max_words': new_max_words, 'limit_type': new_limit_type}
+                        st.rerun()
+
+                except Exception as e:
+                    st.error(f"❌ Regeneration failed: {str(e)}")
 
     else:  # Separate decks mode
         st.success(f"✅ Successfully generated {result['total_cards']} cards across {len(result['decks'])} decks!")
@@ -336,8 +500,8 @@ else:
         st.subheader("Generated Decks")
         for deck in result['decks']:
             with st.expander(f"📦 {deck['name']} ({deck['card_count']} cards)"):
-                # Preview first 3 cards from this deck
-                for i, card in enumerate(deck['cards'][:3]):
+                # Preview first 30 cards from this deck
+                for i, card in enumerate(deck['cards'][:30]):
                     col1, col2 = st.columns([3, 2])
 
                     with col1:
@@ -352,8 +516,8 @@ else:
 
                     st.divider()
 
-                if deck['card_count'] > 3:
-                    st.caption(f"Showing 3 of {deck['card_count']} cards")
+                if deck['card_count'] > 30:
+                    st.caption(f"Showing 30 of {deck['card_count']} cards")
 
             # Download button for this deck (outside expander)
             with open(deck['apkg_path'], 'rb') as f:

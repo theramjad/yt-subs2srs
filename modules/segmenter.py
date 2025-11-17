@@ -19,7 +19,8 @@ class Sentence:
 
 def segment_into_sentences(
     words: List[TranscriptWordData],
-    max_length: int = 10,
+    soft_limit: int = 10,
+    hard_limit: int = 20,
     min_length: int = 3,
     max_duration: float = 8.0
 ) -> List[Sentence]:
@@ -28,7 +29,8 @@ def segment_into_sentences(
 
     Args:
         words: List of TranscriptWordData
-        max_length: Maximum sentence length in words (default 10)
+        soft_limit: Soft word limit - splits at this length when punctuation found (default 10)
+        hard_limit: Hard word limit - always splits at this length regardless of punctuation (default 20)
         min_length: Minimum sentence length in words (default 3)
         max_duration: Maximum sentence duration in seconds (default 8.0)
 
@@ -66,8 +68,10 @@ def segment_into_sentences(
             should_split = True  # Punctuation + reasonable length
         elif re.search(r'[、]', word.text) and len(current_sentence) >= 7:
             should_split = True  # Comma with decent length
-        elif len(current_sentence) >= max_length:
-            # Force split if too long, try to find natural pause
+        elif len(current_sentence) >= hard_limit:
+            should_split = True  # Hard limit - always split
+        elif len(current_sentence) >= soft_limit:
+            # Soft limit - split only if natural pause found
             if re.search(r'[。！？、\s]', word.text):
                 should_split = True
 

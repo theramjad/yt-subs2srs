@@ -11,12 +11,15 @@ A Python desktop application that converts MP4 videos into Anki flashcard decks 
   - **Separate Decks**: Create individual decks per video
 - **High-Quality Transcription**: Uses AssemblyAI for Japanese transcription with word-level timestamps
 - **Speaker Diarization**: Automatically splits sentences based on speaker changes
-- **Smart Segmentation**: Intelligently segments transcript into sentences
+- **Smart Segmentation**: Intelligently segments transcript into sentences with configurable limits
 - **Media-Rich Cards**: Each card includes:
   - Screenshot extracted at sentence start time
   - Audio clip with 250ms padding
   - Japanese sentence text
-- **Card Preview**: Preview cards before downloading
+- **Card Preview**: Preview first 30 cards before downloading
+- **Fast Regeneration**: Adjust word limits and regenerate decks instantly without re-transcribing (saves time and API costs)
+- **Automatic Cleanup**: Session files automatically deleted after 1 hour of inactivity
+- **Multi-User Support**: Isolated sessions for concurrent users
 - **APKG Export**: Ready-to-import Anki deck package(s)
 - **Dark Theme**: Modern dark UI for comfortable viewing
 
@@ -135,11 +138,13 @@ yt-dlp -f "bestvideo[height<=360]+bestaudio/best[height<=360]" --merge-output-fo
      - Generating cards with screenshots and audio
      - Creating deck(s)
 
-6. **Preview Cards**: Once complete, preview cards with screenshots and audio
+6. **Preview Cards**: Once complete, preview the first 30 cards with screenshots and audio
 
 7. **Download APKG**: Click "Download APKG" to get your Anki deck(s)
 
-8. **Import to Anki**: Open Anki and import the downloaded `.apkg` file(s)
+8. **Regenerate (Optional)**: Adjust word limit settings and regenerate the deck instantly using cached transcription - no need to re-upload or re-transcribe!
+
+9. **Import to Anki**: Open Anki and import the downloaded `.apkg` file(s)
 
 ## Card Format
 
@@ -179,10 +184,36 @@ The application uses the following rules to segment sentences:
 
 - **Speaker Changes**: Automatically splits when speaker changes
 - **Punctuation**: Splits on Japanese sentence endings (。！？)
-- **Length Limits**:
-  - Minimum: 3 words
-  - Maximum: 20 words
+- **Length Limits** (configurable in UI):
+  - **Minimum**: 3 words (fixed)
+  - **Maximum Words per Sentence**: Default 15, range 3-50 (user-configurable)
+  - **Limit Type** (user choice):
+    - **Soft Limit** (default): Only splits at max words when punctuation is found (。！？、)
+    - **Hard Limit**: Always splits at max words regardless of punctuation
 - **Japanese Character Filter**: Only includes sentences with Japanese characters
+
+#### What Counts as a "Word"?
+
+Words are determined by AssemblyAI's Japanese tokenization. Since Japanese doesn't use spaces, the API segments based on linguistic boundaries. Examples:
+
+- **Particles**: は (1 word), が (1 word), を (1 word)
+- **Short words**: です (1 word), ます (1 word)
+- **Kanji compounds**: 勉強 (1 word), 食べる (1 word), 今日 (1 word)
+- **Full sentence example**: 私は今日勉強します
+  - Tokens: 私 / は / 今日 / 勉強 / し / ます = **6 words**
+
+This means a "20-word sentence" in the app might be shorter than you expect in natural Japanese.
+
+### Deck Regeneration
+
+After generating a deck, you can quickly regenerate it with different word limit settings:
+
+1. **Cached Transcription**: Your video transcription is cached for 1 hour
+2. **Fast Iteration**: Try different word limits without re-uploading or re-transcribing
+3. **No Additional API Costs**: Regeneration uses cached data, saving API credits
+4. **Automatic Cleanup**: Cached files are automatically deleted after 1 hour of inactivity
+
+**Use Case**: If your initial deck has sentences that are too long or too short, simply adjust the limits and regenerate in seconds!
 
 ### Media Settings
 
