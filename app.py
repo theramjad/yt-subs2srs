@@ -227,6 +227,7 @@ def process_videos(uploaded_files, deck_mode: str, api_key: str, soft_limit: int
                 output_path = str(work_dir / f"{video_name}.apkg")
                 create_anki_deck(video_cards, video_name, output_path)
                 decks.append({
+                    'deck_id': file_idx,  # Unique identifier
                     'name': video_name,
                     'cards': video_cards,
                     'apkg_path': output_path,
@@ -496,73 +497,245 @@ else:
     else:  # Separate decks mode
         st.success(f"✅ Successfully generated {result['total_cards']} cards across {len(result['decks'])} decks!")
 
-        # Show deck summaries
-        st.subheader("Generated Decks")
-        for deck in result['decks']:
-            with st.expander(f"📦 {deck['name']} ({deck['card_count']} cards)"):
-                # Preview first 30 cards from this deck
-                for i, card in enumerate(deck['cards'][:30]):
-                    col1, col2 = st.columns([3, 2])
+        # Tab-based navigation
+        tab1, tab2, tab3 = st.tabs(["📦 All Decks", "🔄 Regenerate", "📥 Downloads"])
+
+        # TAB 1: All Decks Overview
+        with tab1:
+            st.markdown("### Deck Overview")
+
+            for deck in result['decks']:
+                with st.container():
+                    col1, col2 = st.columns([3, 1])
 
                     with col1:
-                        sentence = card['sentence']
-                        display_sentence = sentence if len(sentence) <= 100 else sentence[:100] + "..."
-                        st.markdown(f"**#{i+1}:** {display_sentence}")
-                        if card.get('imageFile') and os.path.exists(card['imageFile']):
-                            st.image(card['imageFile'], width=200)
+                        st.markdown(f"**📦 {deck['name']}**")
+                        st.caption(f"{deck['card_count']} cards")
 
                     with col2:
-                        st.audio(card['audioFile'])
+                        # Use deck_id for unique keys
+                        if st.button("👁️ Preview", key=f"preview_{deck['deck_id']}", use_container_width=True):
+                            st.session_state[f"show_preview_{deck['deck_id']}"] = not st.session_state.get(f"show_preview_{deck['deck_id']}", False)
+
+                    # Show preview if toggled
+                    if st.session_state.get(f"show_preview_{deck['deck_id']}", False):
+                        st.markdown("---")
+                        # Show first 3 cards as preview
+                        for i, card in enumerate(deck['cards'][:3]):
+                            col_a, col_b = st.columns([3, 2])
+
+                            with col_a:
+                                sentence = card['sentence']
+                                display_sentence = sentence if len(sentence) <= 80 else sentence[:80] + "..."
+                                st.markdown(f"**Card {i+1}:** {display_sentence}")
+                                if card.get('imageFile') and os.path.exists(card['imageFile']):
+                                    st.image(card['imageFile'], width=200)
+
+                            with col_b:
+                                st.audio(card['audioFile'])
+
+                        if deck['card_count'] > 3:
+                            st.caption(f"Showing 3 of {deck['card_count']} cards")
+
+                        # Full preview in expander
+                        with st.expander("Show all cards"):
+                            for i, card in enumerate(deck['cards']):
+                                col_a, col_b = st.columns([3, 2])
+
+                                with col_a:
+                                    sentence = card['sentence']
+                                    display_sentence = sentence if len(sentence) <= 100 else sentence[:100] + "..."
+                                    st.markdown(f"**#{i+1}:** {display_sentence}")
+                                    if card.get('imageFile') and os.path.exists(card['imageFile']):
+                                        st.image(card['imageFile'], width=200)
+
+                                with col_b:
+                                    st.audio(card['audioFile'])
+
+                                if i < len(deck['cards']) - 1:
+                                    st.divider()
 
                     st.divider()
 
-                if deck['card_count'] > 30:
-                    st.caption(f"Showing 30 of {deck['card_count']} cards")
+        # TAB 2: Regenerate Decks
+        with tab2:
+            if st.session_state.can_regenerate:
+                st.info("💡 Using cached transcription - only re-segmenting (fast!)")
+                st.markdown(f"**Current settings:** {st.session_state.last_limits['max_words']} words ({st.session_state.last_limits['limit_type']})")
 
-            # Download button for this deck (outside expander)
-            with open(deck['apkg_path'], 'rb') as f:
-                st.download_button(
-                    label=f"📥 Download {deck['name']}.apkg",
-                    data=f,
-                    file_name=os.path.basename(deck['apkg_path']),
-                    mime="application/apkg",
-                    use_container_width=True,
-                    key=f"download_{deck['name']}"
-                )
-            st.write("")  # Add spacing
+                st.markdown("---")
 
-        # Download all button and create another deck button
-        st.divider()
+                with st.form("regenerate_separate_decks_form"):
+                    st.markdown("#### Select Decks to Regenerate")
 
-        # Create zip file with all decks
-        work_dir = Path("tmp") / st.session_state.session_id
-        zip_path = work_dir / "all_decks.zip"
+                    # Checkboxes for deck selection
+                    selected_decks = []
+                    for deck in result['decks']:
+                        if st.checkbox(f"📦 {deck['name']} ({deck['card_count']} cards)", value=True, key=f"regen_select_{deck['deck_id']}"):
+                            selected_decks.append(deck['deck_id'])
 
-        with zipfile.ZipFile(zip_path, 'w') as zipf:
-            for deck in result['decks']:
-                zipf.write(deck['apkg_path'], os.path.basename(deck['apkg_path']))
+                    st.markdown("---")
+                    st.markdown("#### New Settings")
 
-        col1, col2 = st.columns(2)
+                    col1, col2 = st.columns(2)
 
-        with col1:
+                    with col1:
+                        new_max_words = st.number_input(
+                            "Maximum Words per Sentence",
+                            min_value=3,
+                            max_value=50,
+                            value=st.session_state.last_limits['max_words'],
+                            help="Maximum number of words per sentence"
+                        )
+
+                    with col2:
+                        new_limit_type = st.radio(
+                            "Limit Type",
+                            options=["Soft Limit", "Hard Limit"],
+                            index=0 if st.session_state.last_limits['limit_type'] == "Soft Limit" else 1,
+                            help=(
+                                "**Soft Limit**: Tries to split at max words when punctuation found.\n\n"
+                                "**Hard Limit**: Always splits at exactly max words."
+                            ),
+                            horizontal=True
+                        )
+
+                    regenerate_submit = st.form_submit_button("🔄 Regenerate Selected Decks", use_container_width=True)
+
+                if regenerate_submit:
+                    if not selected_decks:
+                        st.error("Please select at least one deck to regenerate")
+                    else:
+                        # Convert limit_type to soft_limit and hard_limit
+                        if new_limit_type == "Soft Limit":
+                            new_soft_limit = new_max_words
+                            new_hard_limit = 50
+                        else:
+                            new_soft_limit = new_max_words
+                            new_hard_limit = new_max_words
+
+                        # Create fake uploaded files for selected decks only
+                        work_dir = Path("tmp") / st.session_state.session_id
+                        cache_mgr = CacheManager(work_dir)
+
+                        class FakeUploadedFile:
+                            def __init__(self, name):
+                                self.name = name
+
+                            def read(self):
+                                return b''  # Not used when use_cache=True
+
+                        # Get video names for selected decks
+                        selected_video_names = [result['decks'][deck_id]['name'] for deck_id in selected_decks]
+                        fake_files = [FakeUploadedFile(f"{name}.mp4") for name in selected_video_names]
+
+                        try:
+                            with st.spinner("Regenerating selected decks..."):
+                                new_result = process_videos(
+                                    fake_files,
+                                    "Separate Decks",
+                                    "",  # API key not needed when using cache
+                                    new_soft_limit,
+                                    new_hard_limit,
+                                    use_cache=True
+                                )
+
+                                # Merge regenerated decks with existing ones, preserving deck_ids
+                                regenerated_names = [result['decks'][deck_id]['name'] for deck_id in selected_decks]
+                                updated_decks = []
+
+                                # Build a map of regenerated decks by name
+                                new_decks_by_name = {deck['name']: deck for deck in new_result['decks']}
+
+                                # Go through all original decks in order, replacing regenerated ones
+                                for original_deck in result['decks']:
+                                    if original_deck['name'] in regenerated_names:
+                                        # This deck was regenerated - use new version but keep original deck_id
+                                        new_deck = new_decks_by_name[original_deck['name']].copy()
+                                        new_deck['deck_id'] = original_deck['deck_id']  # Preserve deck_id!
+                                        updated_decks.append(new_deck)
+                                    else:
+                                        # This deck was not regenerated - keep original
+                                        updated_decks.append(original_deck)
+
+                                # Update the result with merged decks
+                                merged_result = {
+                                    'mode': 'separate',
+                                    'decks': updated_decks,
+                                    'total_cards': sum(d['card_count'] for d in updated_decks),
+                                    'video_names': result['video_names']
+                                }
+                                st.session_state.result = merged_result
+
+                                st.session_state.last_limits = {'max_words': new_max_words, 'limit_type': new_limit_type}
+                                st.rerun()
+
+                        except Exception as e:
+                            st.error(f"❌ Regeneration failed: {str(e)}")
+            else:
+                st.info("Regeneration is not available. Please generate decks first.")
+
+        # TAB 3: Downloads
+        with tab3:
+            st.markdown("### Download Decks")
+
+            # Create zip file with all decks
+            work_dir = Path("tmp") / st.session_state.session_id
+            zip_path = work_dir / "all_decks.zip"
+
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for deck in result['decks']:
+                    zipf.write(deck['apkg_path'], os.path.basename(deck['apkg_path']))
+
+            # Download all button (prominent)
             with open(zip_path, 'rb') as f:
                 st.download_button(
-                    label="📥 Download all zip",
+                    label=f"📥 Download All Decks (ZIP) - {len(result['decks'])} files",
                     data=f,
                     file_name="all_decks.zip",
                     mime="application/zip",
-                    use_container_width=True
+                    use_container_width=True,
+                    type="primary"
                 )
 
-        with col2:
-            if st.button("🔄 Create Another Deck", use_container_width=True):
-                # Clean up session-specific directory
-                session_dir = Path("tmp") / st.session_state.session_id
-                shutil.rmtree(session_dir, ignore_errors=True)
-                st.session_state.processing = False
-                st.session_state.completed = False
-                st.session_state.result = None
-                st.rerun()
+            st.markdown("---")
+            st.markdown("#### Individual Decks")
+
+            # Individual download buttons
+            for deck in result['decks']:
+                col1, col2 = st.columns([3, 1])
+
+                with col1:
+                    st.markdown(f"**📦 {deck['name']}**")
+                    # Calculate file size
+                    file_size = os.path.getsize(deck['apkg_path']) / (1024 * 1024)  # MB
+                    st.caption(f"{deck['card_count']} cards • {file_size:.1f} MB")
+
+                with col2:
+                    with open(deck['apkg_path'], 'rb') as f:
+                        st.download_button(
+                            label="📥 Download",
+                            data=f,
+                            file_name=os.path.basename(deck['apkg_path']),
+                            mime="application/apkg",
+                            use_container_width=True,
+                            key=f"download_{deck['deck_id']}"  # Use deck_id for unique key
+                        )
+
+                st.divider()
+
+        # Action buttons at the bottom
+        st.markdown("---")
+        if st.button("🔄 Create Another Deck", use_container_width=True):
+            # Clean up session-specific directory
+            session_dir = Path("tmp") / st.session_state.session_id
+            shutil.rmtree(session_dir, ignore_errors=True)
+            st.session_state.processing = False
+            st.session_state.completed = False
+            st.session_state.result = None
+            st.session_state.can_regenerate = False
+            st.session_state.transcription_cache = {}
+            st.rerun()
 
 # Footer
 st.divider()
