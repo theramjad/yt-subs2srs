@@ -31,7 +31,8 @@ def generate_hash_filename(prefix: str, extension: str) -> str:
 st.set_page_config(
     page_title="Video to Sub2SRS Decks",
     page_icon="🎴",
-    layout="centered"
+    layout="centered",
+    initial_sidebar_state="collapsed"
 )
 
 # Custom CSS
