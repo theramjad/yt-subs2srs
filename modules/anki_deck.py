@@ -46,15 +46,17 @@ img {
 def create_anki_deck(
     cards: list,
     deck_name: str,
-    output_path: str
+    output_path: str,
+    use_video_tags: bool = False
 ) -> str:
     """
     Create APKG file from cards
 
     Args:
-        cards: List of card dicts with audioFile, imageFile, sentence
+        cards: List of card dicts with audioFile, imageFile, sentence, video_name
         deck_name: Name for the deck
         output_path: Path for output APKG file
+        use_video_tags: If True, tag each card with its video_name
 
     Returns:
         str: Path to created APKG file
@@ -93,14 +95,21 @@ def create_anki_deck(
         if os.path.exists(audio_file):
             media_files.append(audio_file)
 
-        # Create note
+        # Create note with optional tags
+        tags = []
+        if use_video_tags and 'video_name' in card:
+            # Clean video name for tag (remove special characters, replace spaces with underscores)
+            video_tag = card['video_name'].replace(' ', '_').replace('-', '_')
+            tags.append(video_tag)
+
         note = genanki.Note(
             model=model,
             fields=[
                 f'[sound:{audio_basename}]',
                 image_html,
                 sentence,
-            ]
+            ],
+            tags=tags
         )
 
         deck.add_note(note)
