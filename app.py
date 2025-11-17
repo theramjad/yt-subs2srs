@@ -395,20 +395,20 @@ else:
             tags_text = "Enabled" if st.session_state.use_video_tags else "Disabled"
 
             st.markdown(f"""
-            <div style="background-color: #0E1117; padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #262730;">
+            <div style="background-color: #0E1117; padding: 20px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #262730;">
                 <div style="margin-bottom: 12px; color: #FAFAFA; font-weight: 600;">📋 Current Settings</div>
                 <table style="width: 100%; border-collapse: collapse;">
                     <tr>
-                        <td style="padding: 8px 0; color: #FAFAFA;">Max Words per Sentence</td>
-                        <td style="padding: 8px 0; text-align: right; color: #FAFAFA; font-weight: 600;">{st.session_state.last_limits['max_words']}</td>
+                        <td style="padding: 12px 8px; color: #FAFAFA;">Max Words per Sentence</td>
+                        <td style="padding: 12px 8px; text-align: right; color: #FAFAFA; font-weight: 600;">{st.session_state.last_limits['max_words']}</td>
                     </tr>
                     <tr style="border-top: 1px solid #262730;">
-                        <td style="padding: 8px 0; color: #FAFAFA;">Limit Type</td>
-                        <td style="padding: 8px 0; text-align: right; color: #FAFAFA; font-weight: 600;">{st.session_state.last_limits['limit_type']}</td>
+                        <td style="padding: 12px 8px; color: #FAFAFA;">Limit Type</td>
+                        <td style="padding: 12px 8px; text-align: right; color: #FAFAFA; font-weight: 600;">{st.session_state.last_limits['limit_type']}</td>
                     </tr>
                     <tr style="border-top: 1px solid #262730;">
-                        <td style="padding: 8px 0; color: #FAFAFA;">Video Name Tags</td>
-                        <td style="padding: 8px 0; text-align: right; color: #FAFAFA; font-weight: 600;">{tags_icon} {tags_text}</td>
+                        <td style="padding: 12px 8px; color: #FAFAFA;">Video Name Tags</td>
+                        <td style="padding: 12px 8px; text-align: right; color: #FAFAFA; font-weight: 600;">{tags_icon} {tags_text}</td>
                     </tr>
                 </table>
             </div>
