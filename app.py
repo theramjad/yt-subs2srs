@@ -332,7 +332,7 @@ else:
 
     # Preview cards
     st.subheader("Card Preview")
-    for i, card in enumerate(result['preview_cards'][:30]):  # Show first 30 cards
+    for i, card in enumerate(result['preview_cards'][:15]):  # Show first 15 cards
         with st.container():
             col1, col2 = st.columns([3, 2])
 
@@ -353,8 +353,8 @@ else:
 
             st.divider()
 
-    if result['card_count'] > 30:
-        st.info(f"Showing 30 of {result['card_count']} cards")
+    if result['card_count'] > 15:
+        st.info(f"Showing 15 of {result['card_count']} cards")
 
     # Download button
     st.divider()
