@@ -389,9 +389,20 @@ else:
         st.info("💡 Using cached transcription - only re-segmenting (fast!)")
 
         with st.form("regenerate_form"):
-            tags_status = "enabled" if st.session_state.use_video_tags else "disabled"
-            st.markdown(f"**Current settings:** {st.session_state.last_limits['max_words']} words ({st.session_state.last_limits['limit_type']}), Video tags: {tags_status}")
-            st.caption("Note: Regeneration uses the same video tag setting from the original generation. To change it, create a new deck.")
+            # Display current settings in a clean table format
+            st.markdown("**Current Settings**")
+            tags_status = "✅ Enabled" if st.session_state.use_video_tags else "❌ Disabled"
+
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                st.metric("Max Words", st.session_state.last_limits['max_words'])
+            with col_b:
+                st.metric("Limit Type", st.session_state.last_limits['limit_type'])
+            with col_c:
+                st.metric("Video Tags", tags_status)
+
+            st.caption("💡 Regeneration uses the same video tag setting from the original generation. To change it, create a new deck.")
+            st.divider()
 
             col1, col2 = st.columns(2)
 
