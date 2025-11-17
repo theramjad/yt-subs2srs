@@ -389,20 +389,29 @@ else:
         st.info("💡 Using cached transcription - only re-segmenting (fast!)")
 
         with st.form("regenerate_form"):
-            # Display current settings in a clean table format
-            st.markdown("**Current Settings**")
-            tags_status = "✅ Enabled" if st.session_state.use_video_tags else "❌ Disabled"
+            # Display current settings in a clean box
+            tags_icon = "✅" if st.session_state.use_video_tags else "❌"
+            tags_text = "Enabled" if st.session_state.use_video_tags else "Disabled"
 
-            col_a, col_b, col_c = st.columns(3)
-            with col_a:
-                st.metric("Max Words", st.session_state.last_limits['max_words'])
-            with col_b:
-                st.metric("Limit Type", st.session_state.last_limits['limit_type'])
-            with col_c:
-                st.metric("Video Tags", tags_status)
-
-            st.caption("💡 Regeneration uses the same video tag setting from the original generation. To change it, create a new deck.")
-            st.divider()
+            st.markdown(f"""
+            <div style="background-color: #0E1117; padding: 16px; border-radius: 8px; margin-bottom: 16px; border: 1px solid #262730;">
+                <div style="margin-bottom: 12px; color: #FAFAFA; font-weight: 600;">📋 Current Settings</div>
+                <table style="width: 100%; border-collapse: collapse;">
+                    <tr>
+                        <td style="padding: 8px 0; color: #FAFAFA;">Max Words per Sentence</td>
+                        <td style="padding: 8px 0; text-align: right; color: #FAFAFA; font-weight: 600;">{st.session_state.last_limits['max_words']}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #262730;">
+                        <td style="padding: 8px 0; color: #FAFAFA;">Limit Type</td>
+                        <td style="padding: 8px 0; text-align: right; color: #FAFAFA; font-weight: 600;">{st.session_state.last_limits['limit_type']}</td>
+                    </tr>
+                    <tr style="border-top: 1px solid #262730;">
+                        <td style="padding: 8px 0; color: #FAFAFA;">Video Name Tags</td>
+                        <td style="padding: 8px 0; text-align: right; color: #FAFAFA; font-weight: 600;">{tags_icon} {tags_text}</td>
+                    </tr>
+                </table>
+            </div>
+            """, unsafe_allow_html=True)
 
             col1, col2 = st.columns(2)
 
